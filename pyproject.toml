@@ -1,0 +1,25 @@
+[project]
+name = "ornatus"
+version = "0.1.0"
+description = "Ornatus — an autonomous personal wardrobe agent. Your wardrobe, quietly taken care of."
+authors = [{ name = "Rahul Sriram Esakkimuthu" }]
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "strands-agents (>=1.54.0,<2.0.0)",
+    "pydantic (>=2.9,<3.0)",
+    "pydantic-settings (>=2.6,<3.0)",
+]
+
+[tool.poetry]
+packages = [{ include = "ornatus" }]
+
+[tool.poetry.scripts]
+ornatus = "ornatus.api.cli:main"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3"
+
+[build-system]
+requires = ["poetry-core>=2.0.0"]
+build-backend = "poetry.core.masonry.api"
