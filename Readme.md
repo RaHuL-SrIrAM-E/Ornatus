@@ -11,10 +11,11 @@ learning from what actually gets worn.
 Guiding principle: **the user should not manage Ornatus — Ornatus manages the
 wardrobe.**
 
-This is Phase 1: the architectural foundation and a single proven,
-tool-driven agent loop. Business workflows (outfit planning, shopping,
-purchase approval, deliveries, returns) are intentionally not built yet — see
-[Status](#status--whats-next).
+This is Phase 1. The first real use case is proven end-to-end: asking what
+to wear, the agent gathering occasion/weather/wardrobe context through
+tools, recommending a real outfit, logging that decision, and recording
+feedback. Shopping, purchase approval, deliveries, and returns are
+intentionally not built yet — see [Status](#status--whats-next).
 
 ## Architecture
 
@@ -32,12 +33,38 @@ one agent that does everything:
 | API | `ornatus/api/` | The human-facing surface — a CLI for now. |
 
 Data models for the full domain (wardrobe items, user profile, preferences,
-outfit history, purchases, deliveries, returns, events, agent memory) live in
-`ornatus/models/`, and the SQLite schema in
-`ornatus/persistence/schema.sql` mirrors all of them — but only the wardrobe
-slice (`WardrobeRepository`, `WardrobeService`, `wardrobe_tools`) has a
-working implementation. The rest exist as schema/types so the shape of the
-system is settled without writing workflow logic that isn't proven yet.
+outfit history/recommendations, purchases, deliveries, returns, events,
+agent decisions, feedback, agent memory) live in `ornatus/models/`, and the
+SQLite schema in `ornatus/persistence/schema.sql` mirrors all of them.
+Working slices as of Phase 1: wardrobe, occasion/weather context, outfit
+recommendations, agent decisions, and feedback — each with a repository,
+service, and (where agent-facing) tools. User profile, preferences (beyond
+the model shape), purchases, deliveries, returns, and generic event-log
+memory remain schema-only, reserved for later phases.
+
+### The outfit recommendation workflow
+
+    user request
+      -> Ornatus agent (Strands)
+      -> get_event_context tool  (CalendarService — deterministic/mock)
+      -> get_weather tool        (WeatherService — deterministic/mock)
+      -> get_wardrobe_items tool (WardrobeService — real SQLite data)
+      -> agent reasons over the returned items
+      -> record_outfit_recommendation tool (validates item ids, persists OutfitRecommendation)
+      -> ornatus.workflows.decision_logging records an AgentDecision (tools used, items selected, outcome)
+      -> concise response to the user
+
+Feedback ("I don't want to wear the blazer") follows the same shape: the
+agent may look up the wardrobe to resolve which item was meant, then calls
+`record_feedback`, which resolves to the user's latest recommendation when
+none is given explicitly (feedback commonly arrives as a separate CLI
+invocation, so "the latest recommendation" is read from persistence, not
+conversation memory).
+
+The exact tool sequence is chosen by the model at runtime from the tools'
+descriptions — it isn't hardcoded in the application. See
+`ornatus/agent/system_prompt.py` for the guidance given to the model and
+`ornatus/tools/` for the tool set.
 
 ### Why one agent
 
@@ -51,9 +78,22 @@ ever one agent.
 ### Model provider
 
 `ornatus/agent/model_provider.py` is the only place that knows which model
-backend is in use. Phase 1 uses Amazon Bedrock (`BedrockModel`); switching
-providers later means adding a branch there, not touching the agent, tools,
-or services.
+backend is in use, selected via `ORNATUS_MODEL_PROVIDER`:
+
+- **`bedrock`** (default) — the real, production provider (Amazon Bedrock /
+  Nova 2 Lite). Requires AWS credentials with Bedrock access.
+- **`local`** — a deterministic, rule-based stand-in
+  (`ornatus.agent.local_model.LocalDeterministicModel`) with no real model
+  behind it at all. It implements the same `strands.models.model.Model`
+  interface a real provider would, so the orchestrator/tools/services don't
+  know the difference, but it picks its next tool call with fixed rules
+  rather than understanding language — it exists purely so the agent loop
+  can be developed and tested without AWS access (the AWS account backing
+  this hackathon is currently mid-verification for Bedrock). It is never
+  the default and is not a claim that a real model is running.
+
+Switching providers is a config change plus a branch in
+`model_provider.py`, not a change to the agent, tools, or services.
 
 ### Human approval boundary
 
@@ -68,9 +108,9 @@ workflows are built — for now it's a prompt-level constraint.
 - Python 3.11–3.13
 - [Poetry](https://python-poetry.org/)
 - AWS credentials with Bedrock access in `us-west-2` (or wherever
-  `ORNATUS_BEDROCK_REGION` points), for anything that actually calls the
-  model. Everything else (tests, tool/service/repository code) runs without
-  AWS.
+  `ORNATUS_BEDROCK_REGION` points) — only needed for the real Bedrock/Nova
+  provider. Everything else (tests, the CLI with
+  `ORNATUS_MODEL_PROVIDER=local`) runs without AWS.
 
 ## Setup
 
@@ -81,18 +121,26 @@ cp .env.example .env   # optional — defaults work as-is
 
 ## Running the Phase 1 milestone
 
-The milestone proves the full loop: **user request → Ornatus agent → tool
-invocation → structured data → agent reasoning → response**, using a
-wardrobe-lookup tool backed by real (SQLite) persistence.
+Without AWS access, using the deterministic local model:
 
 ```bash
-poetry run ornatus "What's in my wardrobe?"
+ORNATUS_MODEL_PROVIDER=local poetry run ornatus "What should I wear to my client dinner Friday?"
+ORNATUS_MODEL_PROVIDER=local poetry run ornatus "I like that outfit, but I don't want to wear the blazer."
 ```
 
-On first run this seeds a small sample wardrobe into `ornatus.db` (SQLite,
-git-ignored) for a demo user, then asks the agent your question. The agent
-calls `get_wardrobe_items`, gets real structured data back, and reasons over
-it in its response.
+With real Bedrock/Nova access (once AWS verification completes), drop the
+env var — `bedrock` is the default:
+
+```bash
+poetry run ornatus "What should I wear to my client dinner Friday?"
+```
+
+On first run this seeds a small, deterministic sample wardrobe (navy
+blazer, oxford shirt, chinos, loafers, ...) into `ornatus.db` (SQLite,
+git-ignored) for a demo user. Any free-text request works — asking what to
+wear runs the full [outfit recommendation workflow](#the-outfit-recommendation-workflow);
+other requests fall back to the agent's general tool set (wardrobe
+lookup/search, marking an item worn).
 
 ## Testing
 
@@ -100,23 +148,36 @@ it in its response.
 poetry run pytest
 ```
 
-Repository, service, tool, and orchestrator-wiring tests run without AWS.
-One end-to-end test (`tests/test_agent_smoke.py`) makes a real Bedrock call
-and is skipped automatically when no AWS credentials are available.
+Everything except `tests/test_agent_smoke.py` runs without AWS — including
+the full agent loop, via `LocalDeterministicModel`
+(`tests/test_local_agent_workflow.py`). `test_agent_smoke.py` makes real
+Bedrock calls and is skipped automatically when no AWS credentials are
+available.
 
 ## Status & what's next
 
 Built in Phase 1:
 - Full project structure and layer separation
 - Full data/schema layer for the domain model
-- SQLite persistence abstraction + one working repository (wardrobe)
-- One working service (wardrobe) and one working tool
-  (`get_wardrobe_items`)
-- The single orchestrating agent, wired to Bedrock
-- Tests for everything above
+- Working repositories/services/tools: wardrobe (list/search/get/mark-worn),
+  occasion + weather context (deterministic mocks, real-integration-shaped),
+  outfit recommendations (validated against real wardrobe items), agent
+  decision logging, feedback
+- The single orchestrating agent, wired to Bedrock/Nova by default, with a
+  deterministic local model for development without AWS
+- A small, realistic seed wardrobe and one proven end-to-end scenario
+  ("client dinner Friday")
+- Tests for all of the above, none requiring AWS
 
-Not built yet (by design — see the architecture proposal this phase
-followed): outfit planning, shopping/purchase workflows, delivery tracking,
-returns, proactive triggers, preference learning, packing/laundry/repair
-assistance. These land as additional tools/services/workflows behind the
-same orchestrator, following the pattern the wardrobe slice establishes.
+Deferred (deliberately, to stay in scope for this milestone):
+- Folding feedback into `Preferences.learned_weights` — feedback is
+  recorded, but nothing reads it back into future recommendations yet
+- Shopping/purchase workflows, delivery tracking, returns
+- Proactive triggers (scheduled prep, calendar/weather-change webhooks) —
+  the workflow above is user-initiated only
+- Packing/laundry/repair assistance
+- Multi-user auth (`current_user_id` is a single configured user)
+
+These land as additional tools/services/workflows behind the same
+orchestrator, following the pattern the outfit-recommendation slice
+establishes.

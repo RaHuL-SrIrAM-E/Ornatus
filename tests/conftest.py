@@ -1,8 +1,18 @@
 import pytest
 
 from ornatus.persistence.database import Database
+from ornatus.persistence.repositories.agent_decision_repository import AgentDecisionRepository
+from ornatus.persistence.repositories.feedback_repository import FeedbackRepository
+from ornatus.persistence.repositories.outfit_recommendation_repository import (
+    OutfitRecommendationRepository,
+)
 from ornatus.persistence.repositories.wardrobe_repository import WardrobeRepository
+from ornatus.services.decision_service import DecisionService
+from ornatus.services.feedback_service import FeedbackService
+from ornatus.services.outfit_service import OutfitService
 from ornatus.services.wardrobe_service import WardrobeService
+
+TEST_USER_ID = "user-1"
 
 
 @pytest.fixture
@@ -21,3 +31,33 @@ def wardrobe_repository(db):
 @pytest.fixture
 def wardrobe_service(wardrobe_repository):
     return WardrobeService(wardrobe_repository)
+
+
+@pytest.fixture
+def outfit_recommendation_repository(db):
+    return OutfitRecommendationRepository(db)
+
+
+@pytest.fixture
+def outfit_service(outfit_recommendation_repository, wardrobe_repository):
+    return OutfitService(outfit_recommendation_repository, wardrobe_repository)
+
+
+@pytest.fixture
+def feedback_repository(db):
+    return FeedbackRepository(db)
+
+
+@pytest.fixture
+def feedback_service(feedback_repository, outfit_service):
+    return FeedbackService(feedback_repository, outfit_service)
+
+
+@pytest.fixture
+def agent_decision_repository(db):
+    return AgentDecisionRepository(db)
+
+
+@pytest.fixture
+def decision_service(agent_decision_repository):
+    return DecisionService(agent_decision_repository)

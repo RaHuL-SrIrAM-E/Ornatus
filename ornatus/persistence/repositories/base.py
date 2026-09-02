@@ -1,9 +1,10 @@
 """Repository abstraction.
 
-Every domain repository (wardrobe, purchases, deliveries, ...) implements
-this against ``Database``. Only ``WardrobeRepository`` exists concretely in
-Phase 1; the abstraction is what lets the others be added later without
-reshaping the persistence layer.
+Every domain repository (wardrobe, outfit recommendations, decisions,
+feedback, ...) implements this against ``Database``. Domain-specific query
+methods (filters, "mark worn", "latest for user", ...) live on the concrete
+repository, not here — this abstraction only holds what every repository
+needs.
 """
 
 from abc import ABC, abstractmethod

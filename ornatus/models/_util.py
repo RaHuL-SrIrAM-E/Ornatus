@@ -1,5 +1,10 @@
 from datetime import datetime, timezone
+from uuid import uuid4
 
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def new_id(prefix: str) -> str:
+    return f"{prefix}-{uuid4().hex[:12]}"

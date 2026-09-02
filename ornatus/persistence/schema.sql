@@ -1,10 +1,11 @@
 -- Ornatus SQLite schema.
 --
--- Complex/list fields (colors, tags, candidate_products, payload, ...) are
--- stored as JSON text. Each entity mirrors a model in ornatus.models; only
--- wardrobe_items has a repository implementation in Phase 1 — the rest of
--- the tables exist so the schema matches the full data model from day one,
--- without forcing unused repository code into the codebase yet.
+-- Complex/list fields (colors, style_tags, candidate_products, payload, ...)
+-- are stored as JSON text. Each entity mirrors a model in ornatus.models.
+-- wardrobe_items, outfit_recommendations, agent_decisions and feedback have
+-- repository implementations (the first end-to-end agent workflow). The
+-- remaining tables exist so the schema matches the full data model from day
+-- one, without forcing unused repository code into the codebase yet.
 
 CREATE TABLE IF NOT EXISTS user_profiles (
     user_id TEXT PRIMARY KEY,
@@ -31,15 +32,19 @@ CREATE TABLE IF NOT EXISTS preferences (
 CREATE TABLE IF NOT EXISTS wardrobe_items (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
     category TEXT NOT NULL,
     subcategory TEXT,
     colors TEXT NOT NULL DEFAULT '[]',
     pattern TEXT,
-    fabric TEXT,
+    material TEXT,
     brand TEXT,
     size TEXT,
     fit TEXT,
-    tags TEXT NOT NULL DEFAULT '[]',
+    formality TEXT NOT NULL DEFAULT 'casual',
+    season TEXT NOT NULL DEFAULT '["all_season"]',
+    suitable_occasions TEXT NOT NULL DEFAULT '[]',
+    style_tags TEXT NOT NULL DEFAULT '[]',
     image_urls TEXT NOT NULL DEFAULT '[]',
     purchase_date TEXT,
     purchase_price REAL,
@@ -53,6 +58,43 @@ CREATE TABLE IF NOT EXISTS wardrobe_items (
     updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_wardrobe_items_user ON wardrobe_items (user_id);
+
+CREATE TABLE IF NOT EXISTS outfit_recommendations (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    request_text TEXT NOT NULL,
+    event_reference TEXT,
+    weather_summary TEXT,
+    item_ids TEXT NOT NULL DEFAULT '[]',
+    reasoning TEXT NOT NULL,
+    confidence REAL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_outfit_recommendations_user ON outfit_recommendations (user_id);
+
+CREATE TABLE IF NOT EXISTS agent_decisions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    user_request TEXT NOT NULL,
+    decision_type TEXT NOT NULL,
+    tools_used TEXT NOT NULL DEFAULT '[]',
+    selected_item_ids TEXT NOT NULL DEFAULT '[]',
+    reasoning_summary TEXT NOT NULL,
+    outcome TEXT NOT NULL DEFAULT 'completed',
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_agent_decisions_user ON agent_decisions (user_id);
+
+CREATE TABLE IF NOT EXISTS feedback (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    recommendation_id TEXT,
+    feedback_text TEXT NOT NULL,
+    rejected_item_ids TEXT NOT NULL DEFAULT '[]',
+    preference_signal TEXT NOT NULL DEFAULT 'neutral',
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback (user_id);
 
 CREATE TABLE IF NOT EXISTS outfit_history (
     id TEXT PRIMARY KEY,

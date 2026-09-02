@@ -1,50 +1,130 @@
 """Sample wardrobe data for the Phase 1 milestone demo.
 
 Not a fixture for tests (see tests/conftest.py for that) — just enough
-inventory for the CLI to have something real to reason over.
+inventory, spanning both business-casual and casual pieces, for the agent
+to have a real choice to reason over for the "client dinner Friday" scenario
+and others like it.
 """
 
+from ornatus.config.settings import get_settings
+from ornatus.models.common import Formality, Season
 from ornatus.models.wardrobe import ItemCategory, WardrobeItem
 from ornatus.services.wardrobe_service import WardrobeService
 
-DEMO_USER_ID = "demo-user"
+DEMO_USER_ID = get_settings().current_user_id
 
 _SAMPLE_ITEMS = [
     WardrobeItem(
-        id="item-1",
+        id="item-blazer-navy",
         user_id=DEMO_USER_ID,
+        name="Navy Blazer",
         category=ItemCategory.OUTERWEAR,
-        subcategory="raincoat",
+        subcategory="blazer",
         colors=["navy"],
-        brand="Uniqlo",
-        tags=["waterproof", "packable"],
+        material="wool",
+        brand="Suitsupply",
+        formality=Formality.BUSINESS_CASUAL,
+        season=[Season.FALL, Season.WINTER, Season.SPRING],
+        suitable_occasions=["work", "client dinner", "networking"],
+        style_tags=["classic", "tailored"],
     ),
     WardrobeItem(
-        id="item-2",
+        id="item-shirt-oxford-white",
         user_id=DEMO_USER_ID,
+        name="White Oxford Shirt",
         category=ItemCategory.TOP,
-        subcategory="oxford shirt",
+        subcategory="dress shirt",
         colors=["white"],
+        material="cotton",
         brand="Everlane",
-        tags=["smart-casual"],
+        formality=Formality.BUSINESS_CASUAL,
+        season=[Season.ALL_SEASON],
+        suitable_occasions=["work", "client dinner"],
+        style_tags=["classic"],
     ),
     WardrobeItem(
-        id="item-3",
+        id="item-shirt-light-blue",
         user_id=DEMO_USER_ID,
+        name="Light Blue Shirt",
+        category=ItemCategory.TOP,
+        subcategory="dress shirt",
+        colors=["light blue"],
+        material="cotton",
+        brand="Uniqlo",
+        formality=Formality.SMART_CASUAL,
+        season=[Season.ALL_SEASON],
+        suitable_occasions=["work", "brunch"],
+        style_tags=["classic"],
+    ),
+    WardrobeItem(
+        id="item-trousers-charcoal",
+        user_id=DEMO_USER_ID,
+        name="Charcoal Trousers",
+        category=ItemCategory.BOTTOM,
+        subcategory="dress trousers",
+        colors=["charcoal"],
+        material="wool blend",
+        brand="J.Crew",
+        formality=Formality.BUSINESS_CASUAL,
+        season=[Season.FALL, Season.WINTER, Season.SPRING],
+        suitable_occasions=["work", "client dinner"],
+        style_tags=["tailored"],
+    ),
+    WardrobeItem(
+        id="item-jeans-dark-denim",
+        user_id=DEMO_USER_ID,
+        name="Dark Denim Jeans",
+        category=ItemCategory.BOTTOM,
+        subcategory="jeans",
+        colors=["indigo"],
+        material="denim",
+        brand="Levi's",
+        formality=Formality.CASUAL,
+        season=[Season.ALL_SEASON],
+        suitable_occasions=["weekend", "casual outings"],
+        style_tags=["everyday"],
+    ),
+    WardrobeItem(
+        id="item-chinos-beige",
+        user_id=DEMO_USER_ID,
+        name="Beige Chinos",
         category=ItemCategory.BOTTOM,
         subcategory="chinos",
-        colors=["olive"],
+        colors=["beige"],
+        material="cotton twill",
         brand="J.Crew",
-        tags=["smart-casual"],
+        formality=Formality.SMART_CASUAL,
+        season=[Season.SPRING, Season.SUMMER, Season.FALL],
+        suitable_occasions=["work", "brunch", "dates"],
+        style_tags=["smart-casual"],
     ),
     WardrobeItem(
-        id="item-4",
+        id="item-sneakers-white",
         user_id=DEMO_USER_ID,
+        name="White Sneakers",
         category=ItemCategory.SHOES,
         subcategory="sneakers",
         colors=["white"],
+        material="leather",
         brand="Adidas",
-        tags=["casual"],
+        formality=Formality.CASUAL,
+        season=[Season.ALL_SEASON],
+        suitable_occasions=["weekend", "casual outings"],
+        style_tags=["everyday"],
+    ),
+    WardrobeItem(
+        id="item-loafers-brown",
+        user_id=DEMO_USER_ID,
+        name="Brown Loafers",
+        category=ItemCategory.SHOES,
+        subcategory="loafers",
+        colors=["brown"],
+        material="leather",
+        brand="Allen Edmonds",
+        formality=Formality.BUSINESS_CASUAL,
+        season=[Season.ALL_SEASON],
+        suitable_occasions=["work", "client dinner", "dates"],
+        style_tags=["classic"],
     ),
 ]
 
