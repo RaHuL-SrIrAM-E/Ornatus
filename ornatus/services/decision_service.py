@@ -20,6 +20,7 @@ class DecisionService:
         tools_used: list[str],
         reasoning_summary: str,
         selected_item_ids: list[str] | None = None,
+        excluded_item_ids: list[str] | None = None,
         outcome: DecisionOutcome = DecisionOutcome.COMPLETED,
     ) -> AgentDecision:
         decision = AgentDecision(
@@ -29,6 +30,7 @@ class DecisionService:
             decision_type=decision_type,
             tools_used=tools_used,
             selected_item_ids=selected_item_ids or [],
+            excluded_item_ids=excluded_item_ids or [],
             reasoning_summary=reasoning_summary,
             outcome=outcome,
         )

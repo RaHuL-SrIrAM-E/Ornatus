@@ -61,6 +61,13 @@ _FEEDBACK_MARKERS = [
 _NEGATIVE_WORDS = ["don't", "do not", "not ", "avoid", "hate", "dislike"]
 _POSITIVE_WORDS = ["like", "love", "great", "good", "perfect", "nice"]
 
+# Recognized when feedback names an occasion alongside a rejected item, to
+# turn a same-item-next-time rejection into a scoped context signal (e.g.
+# "I don't like blazers for dinners" -> dislike blazers, for dinners —
+# not blazers generally). Simple keyword matching, not language
+# understanding: a feedback sentence with none of these stays item-level.
+_OCCASION_KEYWORDS = ["dinner", "work", "wedding", "brunch", "date", "networking", "meeting"]
+
 
 def _tool_use_id() -> str:
     return f"tool_{uuid4().hex[:8]}"
@@ -84,7 +91,7 @@ def _sentiment(text: str) -> str:
     return "neutral"
 
 
-def _match_garment_ids(text: str, wardrobe_items: list[dict]) -> list[str]:
+def _match_garment_items(text: str, wardrobe_items: list[dict]) -> list[dict]:
     lowered = text.lower()
     matched = []
     for item in wardrobe_items or []:
@@ -93,17 +100,69 @@ def _match_garment_ids(text: str, wardrobe_items: list[dict]) -> list[str]:
         ).lower()
         for keyword in _GARMENT_KEYWORDS:
             if keyword in lowered and keyword in haystack:
-                matched.append(item["id"])
+                matched.append(item)
                 break
     return matched
 
 
-def _select_outfit(wardrobe_items: list[dict], event: dict, weather: dict) -> tuple[list[str], str]:
+def _context_preference_signals(text: str, rejected_items: list[dict]) -> list[dict]:
+    """Broader, context-scoped signals — only when the feedback names both a
+    rejected item and an occasion (e.g. "I don't like blazers for dinners").
+    A bare "I don't want the blazer" produces none of these; the item-level
+    signal from rejected_item_ids (built mechanically in FeedbackService) is
+    the only thing recorded for that case. See the module docstring: this is
+    a keyword-matching heuristic, not language understanding, so it stays
+    conservative rather than guessing.
+    """
+    lowered = text.lower()
+    matched_occasion = next((keyword for keyword in _OCCASION_KEYWORDS if keyword in lowered), None)
+    if matched_occasion is None:
+        return []
+
+    signals = []
+    for item in rejected_items:
+        category_value = item.get("subcategory") or item.get("category")
+        if not category_value:
+            continue
+        signals.append(
+            {"type": "context_dislike", "value": category_value, "context": matched_occasion, "reason": text}
+        )
+    return signals
+
+
+def _excluding_preference(item: dict, preferences: list[dict]) -> str | None:
+    """Id of the first learned preference that rules `item` out, if any."""
+    for preference in preferences:
+        preference_type = preference.get("type")
+        if preference_type == "item_dislike" and preference.get("value") == item["id"]:
+            return preference["id"]
+        if preference_type in ("category_dislike", "context_dislike") and preference.get("value") in (
+            item.get("subcategory"),
+            item.get("category"),
+        ):
+            return preference["id"]
+    return None
+
+
+def _select_outfit(
+    wardrobe_items: list[dict], event: dict, weather: dict, preferences: list[dict]
+) -> tuple[list[str], list[str], list[str], str]:
     formality = event.get("formality", "casual")
     by_category: dict[str, list[dict]] = {}
+    excluded_ids: list[str] = []
+    excluded_names: list[str] = []
+    preferences_considered: list[str] = []
+
     for item in wardrobe_items:
-        if item.get("status") == "active":
-            by_category.setdefault(item["category"], []).append(item)
+        if item.get("status") != "active":
+            continue
+        matched_preference_id = _excluding_preference(item, preferences)
+        if matched_preference_id is not None:
+            excluded_ids.append(item["id"])
+            excluded_names.append(item["name"])
+            preferences_considered.append(matched_preference_id)
+            continue
+        by_category.setdefault(item["category"], []).append(item)
 
     def best(category: str) -> dict | None:
         candidates = by_category.get(category, [])
@@ -130,7 +189,11 @@ def _select_outfit(wardrobe_items: list[dict], event: dict, weather: dict) -> tu
         f"{weather.get('temperature_high_f')}F) "
         + ("suggests layering with the outerwear." if cold_or_wet else "is mild enough to skip a layer.")
     )
-    return item_ids, reasoning
+    if excluded_names:
+        pronoun = "it" if len(excluded_names) == 1 else "them"
+        reasoning += f" Left out {', '.join(excluded_names)} since you mentioned you didn't want to wear {pronoun}."
+
+    return item_ids, excluded_ids, preferences_considered, reasoning
 
 
 class LocalDeterministicModel(Model):
@@ -198,13 +261,14 @@ class LocalDeterministicModel(Model):
             return tool_call("get_wardrobe_items", {})
 
         if "record_feedback" not in called:
-            rejected_ids = _match_garment_ids(request_text, wardrobe_result or [])
+            rejected_items = _match_garment_items(request_text, wardrobe_result or [])
             return tool_call(
                 "record_feedback",
                 {
                     "feedback_text": request_text,
-                    "rejected_item_ids": rejected_ids,
+                    "rejected_item_ids": [item["id"] for item in rejected_items],
                     "preference_signal": _sentiment(request_text),
+                    "preference_signals": _context_preference_signals(request_text, rejected_items),
                 },
             )
 
@@ -225,9 +289,15 @@ class LocalDeterministicModel(Model):
         if "get_wardrobe_items" not in called:
             return tool_call("get_wardrobe_items", {})
 
+        if "get_user_preferences" not in called:
+            return tool_call("get_user_preferences", {"context": event.get("occasion")})
+
         wardrobe_items = tool_result_for(messages, "get_wardrobe_items") or []
+        preferences = tool_result_for(messages, "get_user_preferences") or []
         if "record_outfit_recommendation" not in called:
-            item_ids, reasoning = _select_outfit(wardrobe_items, event, weather)
+            item_ids, excluded_ids, preferences_considered, reasoning = _select_outfit(
+                wardrobe_items, event, weather, preferences
+            )
             weather_summary = (
                 f"{weather.get('condition')}, {weather.get('temperature_low_f')}-"
                 f"{weather.get('temperature_high_f')}F"
@@ -243,6 +313,8 @@ class LocalDeterministicModel(Model):
                     "event_reference": event.get("title"),
                     "weather_summary": weather_summary,
                     "confidence": 0.75,
+                    "excluded_item_ids": excluded_ids,
+                    "preferences_considered": preferences_considered,
                 },
             )
 

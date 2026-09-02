@@ -2,10 +2,11 @@
 --
 -- Complex/list fields (colors, style_tags, candidate_products, payload, ...)
 -- are stored as JSON text. Each entity mirrors a model in ornatus.models.
--- wardrobe_items, outfit_recommendations, agent_decisions and feedback have
--- repository implementations (the first end-to-end agent workflow). The
--- remaining tables exist so the schema matches the full data model from day
--- one, without forcing unused repository code into the codebase yet.
+-- wardrobe_items, outfit_recommendations, agent_decisions, feedback and
+-- learned_preferences have repository implementations (the end-to-end
+-- agent + learning-loop workflow). The remaining tables exist so the
+-- schema matches the full data model from day one, without forcing unused
+-- repository code into the codebase yet.
 
 CREATE TABLE IF NOT EXISTS user_profiles (
     user_id TEXT PRIMARY KEY,
@@ -68,6 +69,8 @@ CREATE TABLE IF NOT EXISTS outfit_recommendations (
     item_ids TEXT NOT NULL DEFAULT '[]',
     reasoning TEXT NOT NULL,
     confidence REAL,
+    excluded_item_ids TEXT NOT NULL DEFAULT '[]',
+    preferences_considered TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_outfit_recommendations_user ON outfit_recommendations (user_id);
@@ -79,6 +82,7 @@ CREATE TABLE IF NOT EXISTS agent_decisions (
     decision_type TEXT NOT NULL,
     tools_used TEXT NOT NULL DEFAULT '[]',
     selected_item_ids TEXT NOT NULL DEFAULT '[]',
+    excluded_item_ids TEXT NOT NULL DEFAULT '[]',
     reasoning_summary TEXT NOT NULL,
     outcome TEXT NOT NULL DEFAULT 'completed',
     created_at TEXT NOT NULL
@@ -95,6 +99,21 @@ CREATE TABLE IF NOT EXISTS feedback (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback (user_id);
+
+CREATE TABLE IF NOT EXISTS learned_preferences (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    value TEXT NOT NULL,
+    context TEXT,
+    reason TEXT,
+    source TEXT NOT NULL DEFAULT 'feedback',
+    confidence REAL NOT NULL DEFAULT 1.0,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_learned_preferences_user ON learned_preferences (user_id);
 
 CREATE TABLE IF NOT EXISTS outfit_history (
     id TEXT PRIMARY KEY,

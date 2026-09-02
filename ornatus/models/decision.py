@@ -30,6 +30,7 @@ class AgentDecision(BaseModel):
     decision_type: DecisionType
     tools_used: list[str] = Field(default_factory=list)
     selected_item_ids: list[str] = Field(default_factory=list)
+    excluded_item_ids: list[str] = Field(default_factory=list)
     reasoning_summary: str
     outcome: DecisionOutcome = DecisionOutcome.COMPLETED
     created_at: datetime = Field(default_factory=utc_now)

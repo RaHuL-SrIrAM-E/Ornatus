@@ -49,3 +49,42 @@ def test_get_latest_for_user_returns_most_recent(outfit_service, wardrobe_reposi
 
 def test_get_latest_for_user_returns_none_when_no_recommendations(outfit_service):
     assert outfit_service.get_latest_for_user("nobody") is None
+
+
+def test_create_recommendation_persists_excluded_items_and_preferences_considered(
+    outfit_service, wardrobe_repository
+):
+    wardrobe_repository.add(
+        WardrobeItem(id="item-1", user_id=USER_ID, name="Oxford Shirt", category=ItemCategory.TOP)
+    )
+    wardrobe_repository.add(
+        WardrobeItem(id="item-blazer", user_id=USER_ID, name="Navy Blazer", category=ItemCategory.OUTERWEAR)
+    )
+
+    recommendation = outfit_service.create_recommendation(
+        USER_ID,
+        request_text="client dinner Friday",
+        item_ids=["item-1"],
+        reasoning="Left out the blazer.",
+        excluded_item_ids=["item-blazer"],
+        preferences_considered=["pref-1"],
+    )
+
+    assert recommendation.excluded_item_ids == ["item-blazer"]
+    assert recommendation.preferences_considered == ["pref-1"]
+    assert outfit_service.get(recommendation.id).excluded_item_ids == ["item-blazer"]
+
+
+def test_create_recommendation_rejects_unknown_excluded_item_ids(outfit_service, wardrobe_repository):
+    wardrobe_repository.add(
+        WardrobeItem(id="item-1", user_id=USER_ID, name="Oxford Shirt", category=ItemCategory.TOP)
+    )
+
+    with pytest.raises(UnknownWardrobeItemsError):
+        outfit_service.create_recommendation(
+            USER_ID,
+            request_text="client dinner Friday",
+            item_ids=["item-1"],
+            reasoning="n/a",
+            excluded_item_ids=["does-not-exist"],
+        )

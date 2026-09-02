@@ -10,6 +10,7 @@ def _row_to_decision(row: sqlite3.Row) -> AgentDecision:
     data = dict(row)
     data["tools_used"] = json.loads(data["tools_used"])
     data["selected_item_ids"] = json.loads(data["selected_item_ids"])
+    data["excluded_item_ids"] = json.loads(data["excluded_item_ids"])
     return AgentDecision(**data)
 
 
@@ -23,8 +24,9 @@ class AgentDecisionRepository(Repository[AgentDecision]):
                 """
                 INSERT INTO agent_decisions (
                     id, user_id, user_request, decision_type, tools_used,
-                    selected_item_ids, reasoning_summary, outcome, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    selected_item_ids, excluded_item_ids, reasoning_summary,
+                    outcome, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     item.id,
@@ -33,6 +35,7 @@ class AgentDecisionRepository(Repository[AgentDecision]):
                     item.decision_type.value,
                     json.dumps(item.tools_used),
                     json.dumps(item.selected_item_ids),
+                    json.dumps(item.excluded_item_ids),
                     item.reasoning_summary,
                     item.outcome.value,
                     item.created_at.isoformat(),

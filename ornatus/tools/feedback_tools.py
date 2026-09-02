@@ -13,8 +13,11 @@ def make_feedback_tools(service: FeedbackService, user_id: str) -> list:
         recommendation_id: str | None = None,
         rejected_item_ids: list[str] | None = None,
         preference_signal: str = "neutral",
+        preference_signals: list[dict] | None = None,
     ) -> dict:
-        """Record the user's feedback on an outfit recommendation.
+        """Record the user's feedback on an outfit recommendation. Every id in
+        rejected_item_ids automatically becomes a remembered item-level
+        dislike — no need to also pass it in preference_signals.
 
         Args:
             feedback_text: The user's feedback, close to verbatim.
@@ -26,6 +29,18 @@ def make_feedback_tools(service: FeedbackService, user_id: str) -> list:
                 get_wardrobe_items first).
             preference_signal: The overall sentiment — one of "positive",
                 "negative", "mixed", "neutral".
+            preference_signals: Broader preferences to remember, only when
+                the feedback text actually supports something wider than
+                "don't use this one item" — e.g. the user said they dislike
+                a whole category, or a category for a specific occasion.
+                Each entry: {"type": one of "item_dislike"/"item_like"/
+                "category_dislike"/"category_like"/"context_dislike"/
+                "context_like"/"general", "value": what it's about (a
+                category/subcategory string, or a free descriptor for
+                "general"), "context": the occasion, only for the
+                context_* types (e.g. "client dinner"), "reason": optional
+                short rationale}. Leave empty rather than guess — a single
+                rejected item should usually stay item-level only.
 
         Returns:
             The persisted feedback as a structured dict, including its id.
@@ -36,6 +51,7 @@ def make_feedback_tools(service: FeedbackService, user_id: str) -> list:
             recommendation_id=recommendation_id,
             rejected_item_ids=rejected_item_ids,
             preference_signal=PreferenceSignal(preference_signal),
+            preference_signals=preference_signals,
         )
         return feedback.model_dump(mode="json")
 

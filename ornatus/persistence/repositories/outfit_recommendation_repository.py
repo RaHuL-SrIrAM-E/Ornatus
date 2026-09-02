@@ -9,6 +9,8 @@ from ornatus.persistence.repositories.base import Repository
 def _row_to_recommendation(row: sqlite3.Row) -> OutfitRecommendation:
     data = dict(row)
     data["item_ids"] = json.loads(data["item_ids"])
+    data["excluded_item_ids"] = json.loads(data["excluded_item_ids"])
+    data["preferences_considered"] = json.loads(data["preferences_considered"])
     return OutfitRecommendation(**data)
 
 
@@ -22,8 +24,9 @@ class OutfitRecommendationRepository(Repository[OutfitRecommendation]):
                 """
                 INSERT INTO outfit_recommendations (
                     id, user_id, request_text, event_reference, weather_summary,
-                    item_ids, reasoning, confidence, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    item_ids, reasoning, confidence, excluded_item_ids,
+                    preferences_considered, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     item.id,
@@ -34,6 +37,8 @@ class OutfitRecommendationRepository(Repository[OutfitRecommendation]):
                     json.dumps(item.item_ids),
                     item.reasoning,
                     item.confidence,
+                    json.dumps(item.excluded_item_ids),
+                    json.dumps(item.preferences_considered),
                     item.created_at.isoformat(),
                 ),
             )

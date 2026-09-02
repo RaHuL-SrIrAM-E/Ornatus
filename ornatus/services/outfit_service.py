@@ -39,8 +39,15 @@ class OutfitService:
         event_reference: str | None = None,
         weather_summary: str | None = None,
         confidence: float | None = None,
+        excluded_item_ids: list[str] | None = None,
+        preferences_considered: list[str] | None = None,
     ) -> OutfitRecommendation:
-        missing = [item_id for item_id in item_ids if self._wardrobe.get(item_id) is None]
+        excluded_item_ids = excluded_item_ids or []
+        missing = [
+            item_id
+            for item_id in [*item_ids, *excluded_item_ids]
+            if self._wardrobe.get(item_id) is None
+        ]
         if missing:
             raise UnknownWardrobeItemsError(missing)
 
@@ -53,6 +60,8 @@ class OutfitService:
             event_reference=event_reference,
             weather_summary=weather_summary,
             confidence=confidence,
+            excluded_item_ids=excluded_item_ids,
+            preferences_considered=preferences_considered or [],
         )
         return self._recommendations.add(recommendation)
 

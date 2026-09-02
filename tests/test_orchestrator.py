@@ -25,6 +25,7 @@ def test_build_orchestrator_wires_all_expected_tools(db, local_provider):
         "mark_wardrobe_item_worn",
         "get_event_context",
         "get_weather",
+        "get_user_preferences",
         "record_outfit_recommendation",
         "record_feedback",
     }

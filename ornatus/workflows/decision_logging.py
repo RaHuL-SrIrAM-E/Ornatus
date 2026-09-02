@@ -46,10 +46,13 @@ def run_agent_and_log(
     tools_used = list(dict.fromkeys(tool_call_names(messages)))  # de-dup, keep call order
     response_text = final_assistant_text(messages) or str(result)
 
+    excluded_item_ids: list[str] = []
+
     if "record_outfit_recommendation" in tools_used:
         recommendation = tool_result_for(messages, "record_outfit_recommendation") or {}
         decision_type = DecisionType.OUTFIT_RECOMMENDATION
         selected_item_ids = recommendation.get("item_ids", [])
+        excluded_item_ids = recommendation.get("excluded_item_ids", [])
         reasoning_summary = recommendation.get("reasoning") or response_text
     elif "record_feedback" in tools_used:
         feedback = tool_result_for(messages, "record_feedback") or {}
@@ -73,6 +76,7 @@ def run_agent_and_log(
         tools_used=tools_used,
         reasoning_summary=_truncate(reasoning_summary),
         selected_item_ids=selected_item_ids,
+        excluded_item_ids=excluded_item_ids,
         outcome=outcome,
     )
 

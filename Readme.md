@@ -11,10 +11,12 @@ learning from what actually gets worn.
 Guiding principle: **the user should not manage Ornatus — Ornatus manages the
 wardrobe.**
 
-This is Phase 1. The first real use case is proven end-to-end: asking what
-to wear, the agent gathering occasion/weather/wardrobe context through
-tools, recommending a real outfit, logging that decision, and recording
-feedback. Shopping, purchase approval, deliveries, and returns are
+This is Phase 1. The first real use case is proven end-to-end, including a
+closed learning loop: asking what to wear, the agent gathering
+occasion/weather/wardrobe/preference context through tools, recommending a
+real outfit, logging that decision, recording feedback, converting it into
+a remembered preference signal, and using that signal to change the *next*
+recommendation. Shopping, purchase approval, deliveries, and returns are
 intentionally not built yet — see [Status](#status--whats-next).
 
 ## Architecture
@@ -34,13 +36,33 @@ one agent that does everything:
 
 Data models for the full domain (wardrobe items, user profile, preferences,
 outfit history/recommendations, purchases, deliveries, returns, events,
-agent decisions, feedback, agent memory) live in `ornatus/models/`, and the
-SQLite schema in `ornatus/persistence/schema.sql` mirrors all of them.
-Working slices as of Phase 1: wardrobe, occasion/weather context, outfit
-recommendations, agent decisions, and feedback — each with a repository,
-service, and (where agent-facing) tools. User profile, preferences (beyond
-the model shape), purchases, deliveries, returns, and generic event-log
-memory remain schema-only, reserved for later phases.
+agent decisions, feedback, learned preferences, agent memory) live in
+`ornatus/models/`, and the SQLite schema in `ornatus/persistence/schema.sql`
+mirrors all of them. Working slices as of Phase 1: wardrobe, occasion/
+weather context, outfit recommendations, agent decisions, feedback, and
+learned preferences — each with a repository, service, and (where
+agent-facing) tools. User profile, the coarser `Preferences` aggregate,
+purchases, deliveries, returns, and generic event-log memory remain
+schema-only, reserved for later phases.
+
+### The learning loop
+
+    user feedback ("...don't want to wear the blazer")
+      -> record_feedback tool
+      -> FeedbackService: rejected_item_ids become item-level LearnedPreference
+         signals automatically (mechanical, no NLP); broader category/context
+         signals are persisted only when the agent explicitly supplies them
+      -> next outfit request
+      -> get_user_preferences tool (scoped to the occasion, when given)
+      -> agent excludes the disliked item and explains why in plain language
+      -> record_outfit_recommendation tool records what was picked *and*
+         what was deliberately left out (excluded_item_ids, preferences_considered)
+
+`LearnedPreference` (`ornatus/models/preferences.py`) is scoped —
+item/category/context/general — on purpose: rejecting one item should not
+silently become "avoid this whole category everywhere." See
+`ornatus/services/feedback_service.py` for exactly what gets inferred
+automatically vs. what requires the agent to say so explicitly.
 
 ### The outfit recommendation workflow
 
@@ -49,7 +71,8 @@ memory remain schema-only, reserved for later phases.
       -> get_event_context tool  (CalendarService — deterministic/mock)
       -> get_weather tool        (WeatherService — deterministic/mock)
       -> get_wardrobe_items tool (WardrobeService — real SQLite data)
-      -> agent reasons over the returned items
+      -> get_user_preferences tool (PreferenceService — learned from past feedback)
+      -> agent reasons over the returned items, excluding anything it's learned to avoid
       -> record_outfit_recommendation tool (validates item ids, persists OutfitRecommendation)
       -> ornatus.workflows.decision_logging records an AgentDecision (tools used, items selected, outcome)
       -> concise response to the user
@@ -59,7 +82,8 @@ agent may look up the wardrobe to resolve which item was meant, then calls
 `record_feedback`, which resolves to the user's latest recommendation when
 none is given explicitly (feedback commonly arrives as a separate CLI
 invocation, so "the latest recommendation" is read from persistence, not
-conversation memory).
+conversation memory) — and turns rejected items into remembered preferences
+(see [The learning loop](#the-learning-loop)).
 
 The exact tool sequence is chosen by the model at runtime from the tools'
 descriptions — it isn't hardcoded in the application. See
@@ -126,7 +150,12 @@ Without AWS access, using the deterministic local model:
 ```bash
 ORNATUS_MODEL_PROVIDER=local poetry run ornatus "What should I wear to my client dinner Friday?"
 ORNATUS_MODEL_PROVIDER=local poetry run ornatus "I like that outfit, but I don't want to wear the blazer."
+ORNATUS_MODEL_PROVIDER=local poetry run ornatus "What should I wear to my client dinner Friday?"
 ```
+
+The third command repeats the first, verbatim — the point is that the
+answer is now different: the blazer is left out, and the reply explains why
+in plain language, without mentioning any tool or database.
 
 With real Bedrock/Nova access (once AWS verification completes), drop the
 env var — `bedrock` is the default:
@@ -162,16 +191,29 @@ Built in Phase 1:
 - Working repositories/services/tools: wardrobe (list/search/get/mark-worn),
   occasion + weather context (deterministic mocks, real-integration-shaped),
   outfit recommendations (validated against real wardrobe items), agent
-  decision logging, feedback
+  decision logging, feedback, and learned preferences
+- A closed learning loop: feedback -> preference signal -> retrieved and
+  applied on the next matching request — see
+  [The learning loop](#the-learning-loop)
 - The single orchestrating agent, wired to Bedrock/Nova by default, with a
   deterministic local model for development without AWS
-- A small, realistic seed wardrobe and one proven end-to-end scenario
-  ("client dinner Friday")
+- A small, realistic seed wardrobe and a proven end-to-end scenario
+  ("client dinner Friday") including the learn-and-adapt loop
 - Tests for all of the above, none requiring AWS
 
 Deferred (deliberately, to stay in scope for this milestone):
-- Folding feedback into `Preferences.learned_weights` — feedback is
-  recorded, but nothing reads it back into future recommendations yet
+- Rolling learned preferences up into the coarser `Preferences` aggregate
+  (`learned_weights`) — each signal is its own row; nothing distills them
+  into a per-user summary profile yet
+- Automatically inferring a *general* (item/context-independent) category
+  dislike from bare feedback text ("I don't like blazers") — the local
+  model only derives item-level and context-level signals, both grounded in
+  a resolved item; a bare category claim needs real language understanding
+  to distinguish from an item-specific complaint, which is exactly the kind
+  of guess this milestone avoided making (a real agent can still supply a
+  `category_dislike`/`general` signal explicitly via `record_feedback`)
+- Reinforcing/strengthening a preference's confidence when the same signal
+  recurs — each occurrence is currently its own row, not merged
 - Shopping/purchase workflows, delivery tracking, returns
 - Proactive triggers (scheduled prep, calendar/weather-change webhooks) —
   the workflow above is user-initiated only

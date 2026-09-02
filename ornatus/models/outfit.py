@@ -43,4 +43,11 @@ class OutfitRecommendation(BaseModel):
     item_ids: list[str]
     reasoning: str
     confidence: float | None = None
+    # Items deliberately left out because of a learned preference (as
+    # opposed to items that just didn't fit the occasion/weather), and the
+    # ids of the LearnedPreference rows responsible — both optional and
+    # empty by default; only populated when a preference actually changed
+    # the outcome. See ornatus.services.preference_service.
+    excluded_item_ids: list[str] = Field(default_factory=list)
+    preferences_considered: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=utc_now)
