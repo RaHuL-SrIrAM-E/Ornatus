@@ -38,9 +38,17 @@ from ornatus.tools.wardrobe_tools import make_wardrobe_tools
 
 @dataclass
 class OrnatusRuntime:
-    """Everything a caller (the CLI, a trigger, a test) needs to run the
-    agent and log the outcome — the agent plus the services that sit
+    """Everything a caller (the CLI, the API, a trigger, a test) needs to
+    run the agent and log the outcome — an agent plus the services that sit
     outside the tool-calling loop.
+
+    ``agent`` is a ready-to-use instance for single-agent callers (the CLI).
+    Callers that handle more than one request against long-lived
+    application state (the API) should use ``new_agent()`` instead of
+    reusing ``agent`` directly — a Strands ``Agent`` accumulates its own
+    conversation history in ``agent.messages``, and Phase 1 requests are
+    single-turn and stateless, so each request gets its own ``Agent``
+    while still sharing the same underlying db/services/tools.
     """
 
     agent: Agent
@@ -50,6 +58,12 @@ class OrnatusRuntime:
     feedback_service: FeedbackService
     preference_service: PreferenceService
     decision_service: DecisionService
+    db: Database
+    tools: list
+
+    def new_agent(self) -> Agent:
+        """Build a fresh, stateless Agent bound to this runtime's tools."""
+        return build_orchestrator(tools=self.tools)
 
 
 def _default_tools(
@@ -121,4 +135,6 @@ def build_runtime(db: Database | None = None) -> OrnatusRuntime:
         feedback_service=feedback_service,
         preference_service=preference_service,
         decision_service=decision_service,
+        db=db,
+        tools=tools,
     )

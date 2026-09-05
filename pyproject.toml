@@ -9,6 +9,8 @@ dependencies = [
     "strands-agents (>=1.54.0,<2.0.0)",
     "pydantic (>=2.9,<3.0)",
     "pydantic-settings (>=2.6,<3.0)",
+    "fastapi (>=0.115,<1.0)",
+    "uvicorn (>=0.32,<1.0)",
 ]
 
 [tool.poetry]
@@ -19,6 +21,7 @@ ornatus = "ornatus.api.cli:main"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.3"
+httpx = ">=0.28.1,<1.0.0"
 
 [build-system]
 requires = ["poetry-core>=2.0.0"]

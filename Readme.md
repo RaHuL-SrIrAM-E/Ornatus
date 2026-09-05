@@ -32,7 +32,7 @@ one agent that does everything:
 | Workflows | `ornatus/workflows/` | Durable multi-step processes that outlive a single agent turn (purchase approval → order → delivery). Reserved, not yet populated. |
 | Persistence | `ornatus/persistence/` | Repository abstraction + SQLite implementation. |
 | Triggers | `ornatus/triggers/` | Proactive entrypoints (scheduled prep, webhooks) that invoke the agent. Reserved, not yet populated. |
-| API | `ornatus/api/` | The human-facing surface — a CLI for now. |
+| API | `ornatus/api/` | The human-facing surface — a CLI, and now a thin HTTP API (`ornatus/api/app.py`). |
 
 Data models for the full domain (wardrobe items, user profile, preferences,
 outfit history/recommendations, purchases, deliveries, returns, events,
@@ -164,6 +164,86 @@ env var — `bedrock` is the default:
 poetry run ornatus "What should I wear to my client dinner Friday?"
 ```
 
+## HTTP API
+
+A thin FastAPI layer sits in front of the same runtime the CLI uses — it
+adds no business logic of its own:
+
+    HTTP API -> existing runtime/orchestrator -> Strands Agent ->
+    existing tools/services/repositories -> existing persistence
+
+Unlike the CLI (a fresh process, and therefore a fresh database/service/
+tool graph, per invocation), the API builds the runtime **once** at process
+startup (`ornatus/api/app.py`, via a FastAPI `lifespan`) and reuses the same
+database connection and services across requests. Each `/chat` request
+still gets its own, stateless Strands `Agent` (`OrnatusRuntime.new_agent()`)
+bound to those shared tools — a Strands `Agent` accumulates conversation
+history in `agent.messages`, and Phase 1 requests are single-turn, so
+reusing one `Agent` instance across unrelated HTTP requests would leak
+state between them. This mirrors exactly how the CLI already behaves
+(each invocation is its own turn; state persists via SQLite, not
+conversation memory) — the API just avoids repeating the database/schema/
+service setup per request.
+
+Run it locally without AWS credentials:
+
+```bash
+ORNATUS_MODEL_PROVIDER=local poetry run uvicorn ornatus.api.app:app --reload
+```
+
+Once AWS Bedrock access is available, drop the env var and it runs against
+Nova 2 Lite (`bedrock` is the default provider) instead.
+
+### `GET /health`
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+```json
+{"status": "ok", "model_provider": "local"}
+```
+
+### `POST /chat`
+
+```bash
+curl -X POST http://127.0.0.1:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "What should I wear to my client dinner Friday?"}'
+```
+
+```json
+{
+  "response": "Picked White Oxford Shirt, Charcoal Trousers, Brown Loafers, Navy Blazer for client dinner: it calls for business casual attire, and the forecast (clear, 52.0-68.0F) suggests layering with the outerwear.",
+  "decision_id": "dec-ea5e9db37d51",
+  "decision_type": "outfit_recommendation",
+  "recommendation": {
+    "id": "rec-4f04fb867b02",
+    "item_ids": ["item-shirt-oxford-white", "item-trousers-charcoal", "item-loafers-brown", "item-blazer-navy"],
+    "excluded_item_ids": [],
+    "reasoning": "Picked White Oxford Shirt, Charcoal Trousers, Brown Loafers, Navy Blazer for client dinner: it calls for business casual attire, and the forecast (clear, 52.0-68.0F) suggests layering with the outerwear.",
+    "confidence": 0.75,
+    "event_reference": "Client Dinner",
+    "weather_summary": "clear, 52.0-68.0F"
+  }
+}
+```
+
+Feedback works the same way as a second request — `recommendation` is
+`null` for a feedback-type decision (there's nothing new to recommend yet):
+
+```bash
+curl -X POST http://127.0.0.1:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "I like that outfit, but I do not want to wear the blazer."}'
+```
+
+A single demo user is used for every request in Phase 1 (no auth, no
+sessions, no multi-user routing) — same as the CLI. An empty or blank
+`message` is rejected with `422`; an agent or persistence failure returns a
+clean `502`/`500` with no stack trace or credentials in the response body
+(diagnostics are logged server-side only).
+
 On first run this seeds a small, deterministic sample wardrobe (navy
 blazer, oxford shirt, chinos, loafers, ...) into `ornatus.db` (SQLite,
 git-ignored) for a demo user. Any free-text request works — asking what to
@@ -179,9 +259,10 @@ poetry run pytest
 
 Everything except `tests/test_agent_smoke.py` runs without AWS — including
 the full agent loop, via `LocalDeterministicModel`
-(`tests/test_local_agent_workflow.py`). `test_agent_smoke.py` makes real
-Bedrock calls and is skipped automatically when no AWS credentials are
-available.
+(`tests/test_local_agent_workflow.py`), and the HTTP API
+(`tests/test_api.py`, using FastAPI's `TestClient` against
+`ORNATUS_MODEL_PROVIDER=local`). `test_agent_smoke.py` makes real Bedrock
+calls and is skipped automatically when no AWS credentials are available.
 
 ## Status & what's next
 
@@ -199,9 +280,14 @@ Built in Phase 1:
   deterministic local model for development without AWS
 - A small, realistic seed wardrobe and a proven end-to-end scenario
   ("client dinner Friday") including the learn-and-adapt loop
+- A thin HTTP API (`ornatus/api/app.py`, FastAPI/Uvicorn) over the same
+  runtime the CLI uses — `GET /health`, `POST /chat` — with no business
+  logic of its own; see [HTTP API](#http-api)
 - Tests for all of the above, none requiring AWS
 
 Deferred (deliberately, to stay in scope for this milestone):
+- Frontend/UI, auth, sessions, multi-user support, WebSockets/streaming for
+  the API — the API is a request/response JSON endpoint only, for now
 - Rolling learned preferences up into the coarser `Preferences` aggregate
   (`learned_weights`) — each signal is its own row; nothing distills them
   into a per-user summary profile yet
