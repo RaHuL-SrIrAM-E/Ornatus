@@ -15,10 +15,12 @@ from ornatus.agent.local_model import LocalDeterministicModel
 from ornatus.agent.system_prompt import SYSTEM_PROMPT
 from ornatus.api.demo_data import DEMO_USER_ID, seed_demo_wardrobe
 from ornatus.models.decision import DecisionType
+from ornatus.models.design import GarmentType
 from ornatus.models.preferences import PreferenceType
 from ornatus.services.calendar_service import CalendarService
 from ornatus.services.weather_service import WeatherService
 from ornatus.tools.context_tools import make_context_tools
+from ornatus.tools.design_tools import make_design_tools
 from ornatus.tools.feedback_tools import make_feedback_tools
 from ornatus.tools.outfit_tools import make_outfit_tools
 from ornatus.tools.preference_tools import make_preference_tools
@@ -26,22 +28,25 @@ from ornatus.tools.wardrobe_tools import make_wardrobe_tools
 from ornatus.workflows.decision_logging import run_agent_and_log
 
 
-def _local_agent(wardrobe_service, outfit_service, feedback_service, preference_service) -> Agent:
+def _local_agent(
+    wardrobe_service, outfit_service, feedback_service, preference_service, design_service
+) -> Agent:
     tools = [
         *make_wardrobe_tools(wardrobe_service, DEMO_USER_ID),
         *make_context_tools(CalendarService(), WeatherService()),
         *make_preference_tools(preference_service, DEMO_USER_ID),
         *make_outfit_tools(outfit_service, DEMO_USER_ID),
         *make_feedback_tools(feedback_service, DEMO_USER_ID),
+        *make_design_tools(design_service, DEMO_USER_ID),
     ]
     return Agent(model=LocalDeterministicModel(), system_prompt=SYSTEM_PROMPT, tools=tools)
 
 
 def test_outfit_recommendation_end_to_end(
-    wardrobe_service, outfit_service, feedback_service, preference_service, decision_service
+    wardrobe_service, outfit_service, feedback_service, preference_service, design_service, decision_service
 ):
     seed_demo_wardrobe(wardrobe_service)
-    agent = _local_agent(wardrobe_service, outfit_service, feedback_service, preference_service)
+    agent = _local_agent(wardrobe_service, outfit_service, feedback_service, preference_service, design_service)
 
     result = run_agent_and_log(
         agent, decision_service, DEMO_USER_ID, "What should I wear to my client dinner Friday?"
@@ -72,11 +77,11 @@ def test_outfit_recommendation_end_to_end(
 
 
 def test_feedback_end_to_end_after_recommendation(
-    wardrobe_service, outfit_service, feedback_service, preference_service, decision_service
+    wardrobe_service, outfit_service, feedback_service, preference_service, design_service, decision_service
 ):
     seed_demo_wardrobe(wardrobe_service)
     run_agent_and_log(
-        _local_agent(wardrobe_service, outfit_service, feedback_service, preference_service),
+        _local_agent(wardrobe_service, outfit_service, feedback_service, preference_service, design_service),
         decision_service,
         DEMO_USER_ID,
         "What should I wear to my client dinner Friday?",
@@ -85,7 +90,7 @@ def test_feedback_end_to_end_after_recommendation(
     # A separate agent/conversation, like a second CLI invocation — feedback
     # must be resolved against persisted state, not conversation memory.
     result = run_agent_and_log(
-        _local_agent(wardrobe_service, outfit_service, feedback_service, preference_service),
+        _local_agent(wardrobe_service, outfit_service, feedback_service, preference_service, design_service),
         decision_service,
         DEMO_USER_ID,
         "I like that outfit, but I don't want to wear the blazer.",
@@ -101,7 +106,7 @@ def test_feedback_end_to_end_after_recommendation(
 
 
 def test_full_learning_loop_avoids_previously_rejected_item(
-    wardrobe_service, outfit_service, feedback_service, preference_service, decision_service
+    wardrobe_service, outfit_service, feedback_service, preference_service, design_service, decision_service
 ):
     """recommend -> feedback -> preference -> next recommendation.
 
@@ -114,7 +119,7 @@ def test_full_learning_loop_avoids_previously_rejected_item(
     request = "What should I wear to my client dinner Friday?"
 
     first = run_agent_and_log(
-        _local_agent(wardrobe_service, outfit_service, feedback_service, preference_service),
+        _local_agent(wardrobe_service, outfit_service, feedback_service, preference_service, design_service),
         decision_service,
         DEMO_USER_ID,
         request,
@@ -122,7 +127,7 @@ def test_full_learning_loop_avoids_previously_rejected_item(
     assert "item-blazer-navy" in first.decision.selected_item_ids
 
     run_agent_and_log(
-        _local_agent(wardrobe_service, outfit_service, feedback_service, preference_service),
+        _local_agent(wardrobe_service, outfit_service, feedback_service, preference_service, design_service),
         decision_service,
         DEMO_USER_ID,
         "I like that outfit, but I don't want to wear the blazer.",
@@ -135,7 +140,7 @@ def test_full_learning_loop_avoids_previously_rejected_item(
     )
 
     second = run_agent_and_log(
-        _local_agent(wardrobe_service, outfit_service, feedback_service, preference_service),
+        _local_agent(wardrobe_service, outfit_service, feedback_service, preference_service, design_service),
         decision_service,
         DEMO_USER_ID,
         request,
@@ -159,3 +164,42 @@ def test_full_learning_loop_avoids_previously_rejected_item(
     assert "blazer" in second.response_text.lower()
     assert "database" not in second.response_text.lower()
     assert "tool" not in second.response_text.lower()
+
+
+def test_design_request_end_to_end(
+    wardrobe_service, outfit_service, feedback_service, preference_service, design_service, decision_service
+):
+    """user request -> DesignRequest -> GarmentSpecification -> DesignConcept
+    -> persistence -> natural-language response — the clothing-creation
+    pipeline, distinct from outfit recommendation. Uses the local
+    deterministic model's small design demo path (keyword matching, not
+    real language understanding — see ornatus/agent/local_model.py).
+    """
+    agent = _local_agent(wardrobe_service, outfit_service, feedback_service, preference_service, design_service)
+
+    result = run_agent_and_log(
+        agent, decision_service, DEMO_USER_ID, "I want a relaxed cream linen shirt for a summer dinner."
+    )
+
+    assert result.decision.decision_type == DecisionType.DESIGN_CONCEPT
+    assert set(result.decision.tools_used) >= {"create_design_request", "save_design_concept"}
+    assert result.response_text
+
+    design_requests = design_service.list_requests_for_user(DEMO_USER_ID)
+    assert len(design_requests) == 1
+    assert design_requests[0].natural_language_request == (
+        "I want a relaxed cream linen shirt for a summer dinner."
+    )
+
+    concept = design_service.get_latest_concept_for_user(DEMO_USER_ID)
+    assert concept is not None
+    assert concept.design_request_id == design_requests[0].id
+    assert concept.garment_specification.garment_type == GarmentType.SHIRT
+    assert concept.garment_specification.fit == "relaxed"
+    assert concept.garment_specification.material == "linen"
+    assert "cream" in concept.garment_specification.colors
+
+    # This must never be mistaken for (or logged as) an outfit recommendation:
+    # no wardrobe items are selected, because nothing here came from the
+    # user's existing wardrobe.
+    assert result.decision.selected_item_ids == []

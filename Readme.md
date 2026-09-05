@@ -90,6 +90,64 @@ descriptions — it isn't hardcoded in the application. See
 `ornatus/agent/system_prompt.py` for the guidance given to the model and
 `ornatus/tools/` for the tool set.
 
+### Clothing creation vs. outfit recommendation
+
+Ornatus's long-term vision isn't limited to composing outfits from clothes
+the user already owns — it should also help them **create** clothing that
+doesn't exist in their wardrobe yet. These are two distinct concepts and
+must not be confused:
+
+- **Outfit recommendation** (`ornatus/services/outfit_service.py`): "I
+  already own these clothes → compose an outfit from them." Every
+  recommendation is grounded in real `WardrobeItem` rows.
+- **Clothing creation** (`ornatus/services/design_service.py`): "I don't
+  have exactly what I want → understand my intent → define a new
+  garment." Nothing here touches the wardrobe at all.
+
+The full envisioned pipeline is:
+
+    Natural-language intent -> Design requirements -> Garment specification
+      -> Design concept -> Visual generation -> Product/manufacturer/tailor
+      discovery -> Quote -> Human approval -> Production -> Delivery -> Wardrobe
+
+**This phase implements only the first three backend layers** — request,
+structured specification, and a proposed concept, all persisted. Visual
+generation, sourcing/manufacturing, quoting, approval, production, and
+delivery are explicitly not built (see [Status](#status--whats-next)).
+
+The pipeline built so far:
+
+    "I want a relaxed cream linen shirt for a summer dinner."
+      -> create_design_request tool -> DesignRequest (natural_language_request,
+         occasion, desired_impression, budget — only what was explicitly said)
+      -> agent translates intent into a GarmentSpecification (garment_type,
+         fit, silhouette, colors, material, pattern, collar, sleeve, length,
+         formality, season, style_tags, occasion, custom_details)
+      -> save_design_concept tool -> DesignConcept (title, description,
+         rationale, referencing the specification) -> persisted in SQLite
+      -> natural-language reply describing the proposed design
+
+`GarmentSpecification` is deliberately one flexible model rather than
+per-garment-type schemas (`ShirtSpecification`, `TrouserSpecification`,
+...) — most fields are plain optional strings, not rigid enums, and
+`custom_details` is an open dict for anything not named above, so new
+garment types and attributes don't require a schema migration. See
+`ornatus/models/design.py` for the full model set and the reasoning
+behind that choice.
+
+As with outfit recommendation, the real interpretive work (turning open-
+ended intent into a grounded specification) is the model's job, guided by
+`ornatus/agent/system_prompt.py` — not hardcoded in the application. Since
+Bedrock/Nova access is still pending, `LocalDeterministicModel` includes
+one small keyword-matching demo path (`ornatus/agent/local_model.py`)
+sufficient to exercise the request → specification → concept →
+persistence pipeline end-to-end. It is explicitly **not** a stand-in for
+real design reasoning — it matches literal words like "linen", "relaxed",
+or "cream" against fixed lists, nothing more. What Nova will actually be
+able to do once Bedrock access is available — genuinely interpret open-
+ended, ambiguous style requests ("elegant but effortless, not corporate")
+into a grounded specification — is untested until then.
+
 ### Why one agent
 
 Strands supports multiple agents (graph/swarm/agent-as-tool), but Phase 1
@@ -238,6 +296,45 @@ curl -X POST http://127.0.0.1:8000/chat \
   -d '{"message": "I like that outfit, but I do not want to wear the blazer."}'
 ```
 
+A clothing-creation request goes through the same endpoint — the Strands
+agent, not the API, decides which kind of request it is — and returns a
+`design_concept` instead of a `recommendation`:
+
+```bash
+curl -X POST http://127.0.0.1:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "I want a relaxed cream linen shirt for a summer dinner."}'
+```
+
+```json
+{
+  "response": "I've designed Relaxed Cream Linen Shirt. A relaxed cream linen shirt, in linen, suited for dinner.",
+  "decision_id": "dec-2e6f9081e1b4",
+  "decision_type": "design_concept",
+  "recommendation": null,
+  "design_concept": {
+    "id": "concept-0b66f5f0c944",
+    "design_request_id": "design-c9324ca32658",
+    "title": "Relaxed Cream Linen Shirt",
+    "description": "A relaxed cream linen shirt, in linen, suited for dinner.",
+    "garment_specification": {
+      "garment_type": "shirt",
+      "fit": "relaxed",
+      "colors": ["cream"],
+      "material": "linen",
+      "occasion": "dinner",
+      "style_tags": [],
+      "custom_details": {}
+    },
+    "rationale": "Derived from the request — matches the dinner occasion."
+  }
+}
+```
+
+See [Clothing creation vs. outfit recommendation](#clothing-creation-vs-outfit-recommendation)
+for what this is (and isn't) today — the example above is the local
+deterministic model's keyword-matching demo, not real design reasoning.
+
 A single demo user is used for every request in Phase 1 (no auth, no
 sessions, no multi-user routing) — same as the CLI. An empty or blank
 `message` is rejected with `422`; an agent or persistence failure returns a
@@ -259,7 +356,10 @@ poetry run pytest
 
 Everything except `tests/test_agent_smoke.py` runs without AWS — including
 the full agent loop, via `LocalDeterministicModel`
-(`tests/test_local_agent_workflow.py`), and the HTTP API
+(`tests/test_local_agent_workflow.py`, which also covers the deterministic
+design demo path end-to-end), the design domain
+(`tests/test_design_models.py`, `test_design_repository.py`,
+`test_design_service.py`, `test_design_tools.py`), and the HTTP API
 (`tests/test_api.py`, using FastAPI's `TestClient` against
 `ORNATUS_MODEL_PROVIDER=local`). `test_agent_smoke.py` makes real Bedrock
 calls and is skipped automatically when no AWS credentials are available.
@@ -283,11 +383,23 @@ Built in Phase 1:
 - A thin HTTP API (`ornatus/api/app.py`, FastAPI/Uvicorn) over the same
   runtime the CLI uses — `GET /health`, `POST /chat` — with no business
   logic of its own; see [HTTP API](#http-api)
+- The first three backend layers of clothing creation — `DesignRequest`,
+  `GarmentSpecification`, `DesignConcept` — with repositories, a
+  deterministic `DesignService`, agent tools, system-prompt guidance, a
+  local-model demo path, and `POST /chat` support; see
+  [Clothing creation vs. outfit recommendation](#clothing-creation-vs-outfit-recommendation)
 - Tests for all of the above, none requiring AWS
 
 Deferred (deliberately, to stay in scope for this milestone):
 - Frontend/UI, auth, sessions, multi-user support, WebSockets/streaming for
   the API — the API is a request/response JSON endpoint only, for now
+- Everything past `DesignConcept` in the clothing-creation pipeline: visual
+  generation, product/manufacturer/tailor discovery, quoting, human
+  approval of a design (distinct from purchase approval), production, and
+  delivery
+- Real (Bedrock/Nova) natural-language interpretation of a design
+  request — only exercised via the local model's narrow keyword-matching
+  demo so far, same caveat as outfit recommendation
 - Rolling learned preferences up into the coarser `Preferences` aggregate
   (`learned_weights`) — each signal is its own row; nothing distills them
   into a per-user summary profile yet

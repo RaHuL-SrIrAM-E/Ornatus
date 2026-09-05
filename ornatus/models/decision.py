@@ -14,6 +14,7 @@ from ornatus.models._util import utc_now
 class DecisionType(StrEnum):
     OUTFIT_RECOMMENDATION = "outfit_recommendation"
     FEEDBACK = "feedback"
+    DESIGN_CONCEPT = "design_concept"
     OTHER = "other"
 
 

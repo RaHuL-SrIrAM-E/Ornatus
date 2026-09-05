@@ -63,6 +63,23 @@ def test_chat_rejects_missing_message_field(api_client):
     assert response.status_code == 422
 
 
+def test_chat_design_request(api_client):
+    response = api_client.post(
+        "/chat", json={"message": "I want a relaxed cream linen shirt for a summer dinner."}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["decision_type"] == "design_concept"
+    assert body["recommendation"] is None
+    assert body["design_concept"] is not None
+    spec = body["design_concept"]["garment_specification"]
+    assert spec["garment_type"] == "shirt"
+    assert spec["fit"] == "relaxed"
+    assert spec["material"] == "linen"
+    assert "cream" in spec["colors"]
+
+
 def test_chat_persists_recommendation_and_learns_from_feedback(api_client):
     first = api_client.post(
         "/chat", json={"message": "What should I wear to my client dinner Friday?"}

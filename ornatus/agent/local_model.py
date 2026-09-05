@@ -16,6 +16,14 @@ and callers should not mistake one for the other — hence keeping this in a
 distinctly named module, selected only via ``ORNATUS_MODEL_PROVIDER=local``,
 never the default.
 
+Includes one small deterministic demonstration path for clothing creation
+(request -> DesignRequest -> GarmentSpecification -> DesignConcept ->
+persistence, via keyword matching — see the "design demo path" section
+below) purely to exercise that infrastructure without AWS access. It is
+NOT a substitute for the real natural-language design reasoning described
+in ``ornatus.agent.system_prompt`` — that requires an actual model and is
+untested until Bedrock/Nova access is available.
+
 Switch back to the real provider at any time with
 ``ORNATUS_MODEL_PROVIDER=bedrock`` (the default) — see
 ``ornatus.agent.model_provider``.
@@ -32,6 +40,7 @@ from strands.types.streaming import StreamEvent
 from strands.types.tools import ToolSpec
 
 from ornatus.agent.messages import initial_user_text, tool_call_names, tool_result_for
+from ornatus.models.design import GarmentType
 
 _GARMENT_KEYWORDS = [
     "blazer",
@@ -66,7 +75,139 @@ _POSITIVE_WORDS = ["like", "love", "great", "good", "perfect", "nice"]
 # "I don't like blazers for dinners" -> dislike blazers, for dinners —
 # not blazers generally). Simple keyword matching, not language
 # understanding: a feedback sentence with none of these stays item-level.
-_OCCASION_KEYWORDS = ["dinner", "work", "wedding", "brunch", "date", "networking", "meeting"]
+# Also reused (unchanged) as the occasion vocabulary for the design-request
+# demo path below.
+_OCCASION_KEYWORDS = [
+    "dinner",
+    "work",
+    "wedding",
+    "brunch",
+    "date",
+    "networking",
+    "meeting",
+    "evening",
+]
+
+# --- Clothing-creation ("design") demo path -------------------------------
+#
+# This is a small, deliberately narrow keyword-matching demonstration of
+# the request -> DesignRequest -> GarmentSpecification -> DesignConcept ->
+# persistence pipeline, NOT a stand-in for real natural-language design
+# reasoning. It exists only so the infrastructure (tools, service,
+# repositories, decision logging, the API) can be exercised without AWS
+# access. The real interpretive work described in the system prompt
+# (translating open-ended intent into a garment specification, grounded in
+# what the user actually said) is Nova/Bedrock's job once available — see
+# ornatus.agent.model_provider and the module docstring above.
+
+_DESIGN_MARKERS = [
+    "i want a",
+    "i want something",
+    "i'd like a",
+    "i would like a",
+    "design me",
+    "create a design",
+    "build me a",
+]
+
+_GARMENT_TYPE_KEYWORDS: dict[str, GarmentType] = {
+    "shirt": GarmentType.SHIRT,
+    "blouse": GarmentType.SHIRT,
+    "blazer": GarmentType.JACKET,
+    "jacket": GarmentType.JACKET,
+    "coat": GarmentType.OUTERWEAR,
+    "trouser": GarmentType.TROUSERS,
+    "pant": GarmentType.TROUSERS,
+    "chino": GarmentType.TROUSERS,
+    "jean": GarmentType.TROUSERS,
+    "dress": GarmentType.DRESS,
+    "skirt": GarmentType.SKIRT,
+    "sweater": GarmentType.SWEATER,
+}
+_COLOR_KEYWORDS = [
+    "cream",
+    "black",
+    "white",
+    "navy",
+    "blue",
+    "grey",
+    "gray",
+    "beige",
+    "olive",
+    "brown",
+    "charcoal",
+    "ivory",
+    "tan",
+]
+_MATERIAL_KEYWORDS = ["linen", "cotton", "wool", "silk", "denim", "leather", "cashmere", "suede"]
+_FIT_KEYWORDS = ["relaxed", "slim", "fitted", "loose", "oversized", "tailored", "boxy"]
+_IMPRESSION_KEYWORDS = [
+    "elegant",
+    "effortless",
+    "corporate",
+    "classic",
+    "edgy",
+    "minimal",
+    "bold",
+    "polished",
+]
+
+
+def _looks_like_design_request(text: str) -> bool:
+    lowered = text.lower()
+    return any(marker in lowered for marker in _DESIGN_MARKERS)
+
+
+def _garment_type_from_text(lowered_text: str) -> GarmentType:
+    for keyword, garment_type in _GARMENT_TYPE_KEYWORDS.items():
+        if keyword in lowered_text:
+            return garment_type
+    return GarmentType.OTHER
+
+
+def _keyword_matches(lowered_text: str, keywords: list[str]) -> list[str]:
+    return [keyword for keyword in keywords if keyword in lowered_text]
+
+
+def _extract_garment_specification(request_text: str, occasion: str | None) -> dict:
+    """Keyword-matching only — see the module note above. Fields with no
+    keyword match are left unset, per the system prompt's instruction not
+    to invent details with no basis.
+    """
+    lowered = request_text.lower()
+    colors = _keyword_matches(lowered, _COLOR_KEYWORDS)
+    materials = _keyword_matches(lowered, _MATERIAL_KEYWORDS)
+    fits = _keyword_matches(lowered, _FIT_KEYWORDS)
+    style_tags = _keyword_matches(lowered, _IMPRESSION_KEYWORDS)
+
+    return {
+        "garment_type": _garment_type_from_text(lowered).value,
+        "fit": fits[0] if fits else None,
+        "colors": colors,
+        "material": materials[0] if materials else None,
+        "occasion": occasion,
+        "style_tags": style_tags,
+    }
+
+
+def _design_concept_text(spec: dict) -> tuple[str, str, str]:
+    """title, description, rationale — composed from the extracted spec."""
+    descriptor_bits = [bit for bit in [spec.get("fit"), *spec.get("colors", []), spec.get("material")] if bit]
+    descriptor = " ".join(descriptor_bits)
+    garment_type = spec.get("garment_type", "garment")
+    title = f"{descriptor} {garment_type}".strip().title()
+
+    description_bits = [f"A {descriptor} {garment_type}" if descriptor else f"A {garment_type}"]
+    if spec.get("material"):
+        description_bits.append(f"in {spec['material']}")
+    if spec.get("occasion"):
+        description_bits.append(f"suited for {spec['occasion']}")
+    if spec.get("style_tags"):
+        description_bits.append(f"with a {', '.join(spec['style_tags'])} feel")
+    description = ", ".join(description_bits) + "."
+
+    rationale = "Derived from the request" + (f" — matches the {spec['occasion']} occasion" if spec.get("occasion") else "") + "."
+    return title, description, rationale
 
 
 def _tool_use_id() -> str:
@@ -246,6 +387,8 @@ class LocalDeterministicModel(Model):
 
         if _looks_like_feedback(request_text):
             events = self._feedback_turn(request_text, called, messages, tool_call, final_text)
+        elif _looks_like_design_request(request_text):
+            events = self._design_turn(request_text, called, messages, tool_call, final_text)
         else:
             events = self._outfit_turn(request_text, called, messages, tool_call, final_text)
 
@@ -273,6 +416,43 @@ class LocalDeterministicModel(Model):
             )
 
         return final_text("Got it — I've noted that feedback for next time.")
+
+    def _design_turn(self, request_text, called, messages, tool_call, final_text):
+        """Deterministic demo path for clothing creation — see the module
+        note above. Mirrors the create_design_request -> save_design_concept
+        sequence the system prompt asks the real model to perform, but
+        decides *what* to put in the specification via keyword matching
+        instead of language understanding.
+        """
+        matched_occasion = next(
+            (keyword for keyword in _OCCASION_KEYWORDS if keyword in request_text.lower()), None
+        )
+
+        if "create_design_request" not in called:
+            return tool_call(
+                "create_design_request",
+                {"natural_language_request": request_text, "occasion": matched_occasion},
+            )
+
+        design_request = tool_result_for(messages, "create_design_request") or {}
+        if "save_design_concept" not in called:
+            spec = _extract_garment_specification(request_text, matched_occasion)
+            title, description, rationale = _design_concept_text(spec)
+            return tool_call(
+                "save_design_concept",
+                {
+                    "design_request_id": design_request.get("id"),
+                    "title": title,
+                    "description": description,
+                    "rationale": rationale,
+                    "garment_specification": spec,
+                },
+            )
+
+        concept = tool_result_for(messages, "save_design_concept") or {}
+        description = concept.get("description", "")
+        title = concept.get("title", "design")
+        return final_text(f"I've designed {title}. {description}".strip())
 
     def _outfit_turn(self, request_text, called, messages, tool_call, final_text):
         if "get_event_context" not in called:

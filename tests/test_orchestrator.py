@@ -28,4 +28,8 @@ def test_build_orchestrator_wires_all_expected_tools(db, local_provider):
         "get_user_preferences",
         "record_outfit_recommendation",
         "record_feedback",
+        "create_design_request",
+        "save_design_concept",
+        "get_design_concept",
+        "list_design_concepts",
     }

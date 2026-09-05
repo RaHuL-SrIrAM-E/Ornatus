@@ -2,6 +2,8 @@ import pytest
 
 from ornatus.persistence.database import Database
 from ornatus.persistence.repositories.agent_decision_repository import AgentDecisionRepository
+from ornatus.persistence.repositories.design_concept_repository import DesignConceptRepository
+from ornatus.persistence.repositories.design_request_repository import DesignRequestRepository
 from ornatus.persistence.repositories.feedback_repository import FeedbackRepository
 from ornatus.persistence.repositories.outfit_recommendation_repository import (
     OutfitRecommendationRepository,
@@ -9,6 +11,7 @@ from ornatus.persistence.repositories.outfit_recommendation_repository import (
 from ornatus.persistence.repositories.preference_repository import PreferenceRepository
 from ornatus.persistence.repositories.wardrobe_repository import WardrobeRepository
 from ornatus.services.decision_service import DecisionService
+from ornatus.services.design_service import DesignService
 from ornatus.services.feedback_service import FeedbackService
 from ornatus.services.outfit_service import OutfitService
 from ornatus.services.preference_service import PreferenceService
@@ -73,3 +76,18 @@ def agent_decision_repository(db):
 @pytest.fixture
 def decision_service(agent_decision_repository):
     return DecisionService(agent_decision_repository)
+
+
+@pytest.fixture
+def design_request_repository(db):
+    return DesignRequestRepository(db)
+
+
+@pytest.fixture
+def design_concept_repository(db):
+    return DesignConceptRepository(db)
+
+
+@pytest.fixture
+def design_service(design_request_repository, design_concept_repository):
+    return DesignService(design_request_repository, design_concept_repository)

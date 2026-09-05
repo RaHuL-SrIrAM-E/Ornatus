@@ -2,11 +2,11 @@
 --
 -- Complex/list fields (colors, style_tags, candidate_products, payload, ...)
 -- are stored as JSON text. Each entity mirrors a model in ornatus.models.
--- wardrobe_items, outfit_recommendations, agent_decisions, feedback and
--- learned_preferences have repository implementations (the end-to-end
--- agent + learning-loop workflow). The remaining tables exist so the
--- schema matches the full data model from day one, without forcing unused
--- repository code into the codebase yet.
+-- wardrobe_items, outfit_recommendations, agent_decisions, feedback,
+-- learned_preferences, design_requests and design_concepts have repository
+-- implementations (the end-to-end agent + learning-loop + design workflow).
+-- The remaining tables exist so the schema matches the full data model from
+-- day one, without forcing unused repository code into the codebase yet.
 
 CREATE TABLE IF NOT EXISTS user_profiles (
     user_id TEXT PRIMARY KEY,
@@ -114,6 +114,31 @@ CREATE TABLE IF NOT EXISTS learned_preferences (
     updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_learned_preferences_user ON learned_preferences (user_id);
+
+CREATE TABLE IF NOT EXISTS design_requests (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    natural_language_request TEXT NOT NULL,
+    occasion TEXT,
+    desired_impression TEXT,
+    budget REAL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_design_requests_user ON design_requests (user_id);
+
+CREATE TABLE IF NOT EXISTS design_concepts (
+    id TEXT PRIMARY KEY,
+    design_request_id TEXT NOT NULL,
+    user_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    garment_specification TEXT NOT NULL DEFAULT '{}',
+    rationale TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_design_concepts_user ON design_concepts (user_id);
+CREATE INDEX IF NOT EXISTS idx_design_concepts_request ON design_concepts (design_request_id);
 
 CREATE TABLE IF NOT EXISTS outfit_history (
     id TEXT PRIMARY KEY,

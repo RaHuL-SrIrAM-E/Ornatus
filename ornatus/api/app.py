@@ -77,11 +77,24 @@ class RecommendationOut(BaseModel):
     weather_summary: str | None = None
 
 
+class DesignConceptOut(BaseModel):
+    id: str
+    design_request_id: str
+    title: str
+    description: str
+    garment_specification: dict
+    rationale: str
+
+
 class ChatResponse(BaseModel):
     response: str
     decision_id: str
     decision_type: str
+    # Outfit recommendation ("compose from what the user already owns") and
+    # design concept ("define a new garment") are distinct outcomes — see
+    # ornatus.services.design_service — so at most one of these is ever set.
     recommendation: RecommendationOut | None = None
+    design_concept: DesignConceptOut | None = None
 
 
 class HealthResponse(BaseModel):
@@ -109,29 +122,42 @@ def chat(request: ChatRequest) -> ChatResponse:
         ) from exc
 
     recommendation = None
-    if result.decision.decision_type == DecisionType.OUTFIT_RECOMMENDATION:
-        try:
+    design_concept = None
+    try:
+        if result.decision.decision_type == DecisionType.OUTFIT_RECOMMENDATION:
             latest = runtime.outfit_service.get_latest_for_user(runtime.user_id)
-        except Exception as exc:
-            logger.exception("Failed to load the persisted recommendation after a successful agent run")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Ornatus recorded a decision but the recommendation could not be retrieved.",
-            ) from exc
-        if latest is not None:
-            recommendation = RecommendationOut(
-                id=latest.id,
-                item_ids=latest.item_ids,
-                excluded_item_ids=latest.excluded_item_ids,
-                reasoning=latest.reasoning,
-                confidence=latest.confidence,
-                event_reference=latest.event_reference,
-                weather_summary=latest.weather_summary,
-            )
+            if latest is not None:
+                recommendation = RecommendationOut(
+                    id=latest.id,
+                    item_ids=latest.item_ids,
+                    excluded_item_ids=latest.excluded_item_ids,
+                    reasoning=latest.reasoning,
+                    confidence=latest.confidence,
+                    event_reference=latest.event_reference,
+                    weather_summary=latest.weather_summary,
+                )
+        elif result.decision.decision_type == DecisionType.DESIGN_CONCEPT:
+            latest_concept = runtime.design_service.get_latest_concept_for_user(runtime.user_id)
+            if latest_concept is not None:
+                design_concept = DesignConceptOut(
+                    id=latest_concept.id,
+                    design_request_id=latest_concept.design_request_id,
+                    title=latest_concept.title,
+                    description=latest_concept.description,
+                    garment_specification=latest_concept.garment_specification.model_dump(mode="json"),
+                    rationale=latest_concept.rationale,
+                )
+    except Exception as exc:
+        logger.exception("Failed to load persisted result after a successful agent run")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ornatus recorded a decision but the result could not be retrieved.",
+        ) from exc
 
     return ChatResponse(
         response=result.response_text,
         decision_id=result.decision.id,
         decision_type=result.decision.decision_type.value,
         recommendation=recommendation,
+        design_concept=design_concept,
     )

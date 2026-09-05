@@ -16,6 +16,8 @@ from ornatus.agent.system_prompt import SYSTEM_PROMPT
 from ornatus.config.settings import get_settings
 from ornatus.persistence.database import Database
 from ornatus.persistence.repositories.agent_decision_repository import AgentDecisionRepository
+from ornatus.persistence.repositories.design_concept_repository import DesignConceptRepository
+from ornatus.persistence.repositories.design_request_repository import DesignRequestRepository
 from ornatus.persistence.repositories.feedback_repository import FeedbackRepository
 from ornatus.persistence.repositories.outfit_recommendation_repository import (
     OutfitRecommendationRepository,
@@ -24,12 +26,14 @@ from ornatus.persistence.repositories.preference_repository import PreferenceRep
 from ornatus.persistence.repositories.wardrobe_repository import WardrobeRepository
 from ornatus.services.calendar_service import CalendarService
 from ornatus.services.decision_service import DecisionService
+from ornatus.services.design_service import DesignService
 from ornatus.services.feedback_service import FeedbackService
 from ornatus.services.outfit_service import OutfitService
 from ornatus.services.preference_service import PreferenceService
 from ornatus.services.wardrobe_service import WardrobeService
 from ornatus.services.weather_service import WeatherService
 from ornatus.tools.context_tools import make_context_tools
+from ornatus.tools.design_tools import make_design_tools
 from ornatus.tools.feedback_tools import make_feedback_tools
 from ornatus.tools.outfit_tools import make_outfit_tools
 from ornatus.tools.preference_tools import make_preference_tools
@@ -58,6 +62,7 @@ class OrnatusRuntime:
     feedback_service: FeedbackService
     preference_service: PreferenceService
     decision_service: DecisionService
+    design_service: DesignService
     db: Database
     tools: list
 
@@ -68,11 +73,12 @@ class OrnatusRuntime:
 
 def _default_tools(
     db: Database, user_id: str
-) -> tuple[list, WardrobeService, OutfitService, FeedbackService, PreferenceService]:
+) -> tuple[list, WardrobeService, OutfitService, FeedbackService, PreferenceService, DesignService]:
     wardrobe_service = WardrobeService(WardrobeRepository(db))
     outfit_service = OutfitService(OutfitRecommendationRepository(db), WardrobeRepository(db))
     preference_service = PreferenceService(PreferenceRepository(db))
     feedback_service = FeedbackService(FeedbackRepository(db), outfit_service, preference_service)
+    design_service = DesignService(DesignRequestRepository(db), DesignConceptRepository(db))
     calendar_service = CalendarService()
     weather_service = WeatherService()
 
@@ -82,8 +88,9 @@ def _default_tools(
         *make_preference_tools(preference_service, user_id),
         *make_outfit_tools(outfit_service, user_id),
         *make_feedback_tools(feedback_service, user_id),
+        *make_design_tools(design_service, user_id),
     ]
-    return tools, wardrobe_service, outfit_service, feedback_service, preference_service
+    return tools, wardrobe_service, outfit_service, feedback_service, preference_service, design_service
 
 
 def build_orchestrator(db: Database | None = None, tools: list | None = None) -> Agent:
@@ -121,8 +128,8 @@ def build_runtime(db: Database | None = None) -> OrnatusRuntime:
     db.initialize_schema()
     user_id = settings.current_user_id
 
-    tools, wardrobe_service, outfit_service, feedback_service, preference_service = _default_tools(
-        db, user_id
+    tools, wardrobe_service, outfit_service, feedback_service, preference_service, design_service = (
+        _default_tools(db, user_id)
     )
     decision_service = DecisionService(AgentDecisionRepository(db))
     agent = build_orchestrator(db=db, tools=tools)
@@ -135,6 +142,7 @@ def build_runtime(db: Database | None = None) -> OrnatusRuntime:
         feedback_service=feedback_service,
         preference_service=preference_service,
         decision_service=decision_service,
+        design_service=design_service,
         db=db,
         tools=tools,
     )

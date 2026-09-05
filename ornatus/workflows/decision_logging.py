@@ -62,6 +62,11 @@ def run_agent_and_log(
             f"Recorded {feedback.get('preference_signal', 'neutral')} feedback: "
             f"{feedback.get('feedback_text', user_request)}"
         )
+    elif "save_design_concept" in tools_used:
+        concept = tool_result_for(messages, "save_design_concept") or {}
+        decision_type = DecisionType.DESIGN_CONCEPT
+        selected_item_ids = []
+        reasoning_summary = concept.get("rationale") or concept.get("description") or response_text
     else:
         decision_type = DecisionType.OTHER
         selected_item_ids = []
