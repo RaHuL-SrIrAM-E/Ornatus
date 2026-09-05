@@ -1,0 +1,53 @@
+.item-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-bg-raised);
+  transition:
+    border-color 0.2s var(--ease),
+    transform 0.2s var(--ease);
+}
+
+.item-card:hover {
+  border-color: var(--color-border-strong);
+}
+
+.item-card__swatch {
+  /* Placeholder for future garment photography — same aspect box a real
+     image would occupy, so swapping in imagery later needs no layout
+     change. */
+  aspect-ratio: 4 / 5;
+  background: var(--color-bg-sunken);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-faint);
+  font-family: var(--font-serif);
+  font-size: 2rem;
+}
+
+.item-card__body {
+  padding: var(--space-sm) var(--space-md) var(--space-md);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.item-card__name {
+  font-size: 0.98rem;
+  color: var(--color-text);
+}
+
+.item-card__category {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  text-transform: capitalize;
+}
+
+.item-card__meta {
+  font-size: 0.78rem;
+  color: var(--color-text-faint);
+  text-transform: capitalize;
+}

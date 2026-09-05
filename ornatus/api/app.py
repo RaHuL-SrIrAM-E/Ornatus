@@ -19,6 +19,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 
 from ornatus.agent.orchestrator import OrnatusRuntime, build_runtime
@@ -26,6 +27,7 @@ from ornatus.api.demo_data import seed_demo_wardrobe
 from ornatus.config.logging import configure_logging
 from ornatus.config.settings import get_settings
 from ornatus.models.decision import DecisionType
+from ornatus.models.wardrobe import WardrobeItem
 from ornatus.workflows.decision_logging import run_agent_and_log
 
 logger = logging.getLogger(__name__)
@@ -50,6 +52,17 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Ornatus API", version="0.1.0", lifespan=lifespan)
 
+# Local-dev only: the Vite frontend runs on a different origin
+# (localhost:5173) than the API (localhost:8000). Phase 1 has no auth/
+# multi-user concept and this is a hackathon build, so a permissive CORS
+# policy is acceptable here — revisit before this is ever deployed.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 def _get_runtime() -> OrnatusRuntime:
     return app.state.runtime
@@ -67,10 +80,42 @@ class ChatRequest(BaseModel):
         return stripped
 
 
+class WardrobeItemOut(BaseModel):
+    """A display-safe view of a wardrobe item — no purchase history, care
+    instructions, or other internal detail the UI has no use for.
+    """
+
+    id: str
+    name: str
+    category: str
+    subcategory: str | None = None
+    colors: list[str]
+    material: str | None = None
+    pattern: str | None = None
+    formality: str
+    style_tags: list[str]
+
+    @classmethod
+    def from_item(cls, item: WardrobeItem) -> "WardrobeItemOut":
+        return cls(
+            id=item.id,
+            name=item.name,
+            category=item.category.value,
+            subcategory=item.subcategory,
+            colors=item.colors,
+            material=item.material,
+            pattern=item.pattern,
+            formality=item.formality.value,
+            style_tags=item.style_tags,
+        )
+
+
 class RecommendationOut(BaseModel):
     id: str
     item_ids: list[str]
     excluded_item_ids: list[str]
+    items: list[WardrobeItemOut]
+    excluded_items: list[WardrobeItemOut]
     reasoning: str
     confidence: float | None = None
     event_reference: str | None = None
@@ -107,6 +152,20 @@ def health() -> HealthResponse:
     return HealthResponse(status="ok", model_provider=get_settings().model_provider)
 
 
+@app.get("/wardrobe", response_model=list[WardrobeItemOut])
+def get_wardrobe() -> list[WardrobeItemOut]:
+    runtime = _get_runtime()
+    try:
+        items = runtime.wardrobe_service.get_items(runtime.user_id)
+    except Exception as exc:
+        logger.exception("Failed to load the wardrobe")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Ornatus could not load the wardrobe. Please try again.",
+        ) from exc
+    return [WardrobeItemOut.from_item(item) for item in items]
+
+
 @app.post("/chat", response_model=ChatResponse)
 def chat(request: ChatRequest) -> ChatResponse:
     runtime = _get_runtime()
@@ -127,10 +186,18 @@ def chat(request: ChatRequest) -> ChatResponse:
         if result.decision.decision_type == DecisionType.OUTFIT_RECOMMENDATION:
             latest = runtime.outfit_service.get_latest_for_user(runtime.user_id)
             if latest is not None:
+                items = [runtime.wardrobe_service.get_item(item_id) for item_id in latest.item_ids]
+                excluded_items = [
+                    runtime.wardrobe_service.get_item(item_id) for item_id in latest.excluded_item_ids
+                ]
                 recommendation = RecommendationOut(
                     id=latest.id,
                     item_ids=latest.item_ids,
                     excluded_item_ids=latest.excluded_item_ids,
+                    items=[WardrobeItemOut.from_item(item) for item in items if item is not None],
+                    excluded_items=[
+                        WardrobeItemOut.from_item(item) for item in excluded_items if item is not None
+                    ],
                     reasoning=latest.reasoning,
                     confidence=latest.confidence,
                     event_reference=latest.event_reference,

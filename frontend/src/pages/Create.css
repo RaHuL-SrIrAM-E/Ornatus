@@ -1,0 +1,28 @@
+.create {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.create__hero {
+  padding: var(--space-lg) 0 var(--space-md);
+}
+
+.create__hero h1 {
+  font-size: clamp(2rem, 4.5vw, 2.8rem);
+  margin-bottom: var(--space-xs);
+}
+
+.create__subtitle {
+  font-size: 1.1rem;
+  color: var(--color-text-muted);
+}
+
+.create__thinking {
+  color: var(--color-text-faint);
+  font-style: italic;
+}
+
+.create__result {
+  margin-top: var(--space-md);
+}

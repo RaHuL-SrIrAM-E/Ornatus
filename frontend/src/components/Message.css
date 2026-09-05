@@ -1,0 +1,18 @@
+.message {
+  font-size: 1.05rem;
+  line-height: 1.6;
+  max-width: 640px;
+}
+
+.message--user {
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.message--assistant {
+  color: var(--color-text);
+}
+
+.message--error {
+  color: var(--color-negative);
+}

@@ -1,0 +1,101 @@
+.design-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: var(--space-xl);
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.design-card__figure {
+  /* Placeholder for the future generated design image — same box a real
+     rendering would occupy later, no layout change required. */
+  background: var(--color-bg-sunken);
+  min-height: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-lg);
+  text-align: center;
+  color: var(--color-text-faint);
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 0.95rem;
+}
+
+.design-card__content {
+  padding: var(--space-xl) var(--space-lg) var(--space-xl) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.design-card__title {
+  font-size: 1.6rem;
+  letter-spacing: 0.01em;
+}
+
+.design-card__description {
+  color: var(--color-text-muted);
+  line-height: 1.65;
+  max-width: 46ch;
+}
+
+.design-card__details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-sm) var(--space-md);
+  margin: 0;
+  border-top: 1px solid var(--color-border);
+  padding-top: var(--space-md);
+}
+
+.design-card__detail dt {
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
+}
+
+.design-card__detail dd {
+  margin: 0.15rem 0 0;
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
+  color: var(--color-accent-strong);
+}
+
+.design-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.design-card__tag {
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  padding: 0.2rem 0.7rem;
+  font-size: 0.78rem;
+  color: var(--color-text-muted);
+  text-transform: capitalize;
+}
+
+.design-card__rationale {
+  font-size: 0.85rem;
+  font-style: italic;
+  color: var(--color-text-faint);
+}
+
+@media (max-width: 720px) {
+  .design-card {
+    grid-template-columns: 1fr;
+  }
+
+  .design-card__figure {
+    min-height: 200px;
+  }
+
+  .design-card__content {
+    padding: var(--space-lg) var(--space-md) var(--space-lg);
+  }
+}

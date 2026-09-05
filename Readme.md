@@ -189,9 +189,11 @@ workflows are built — for now it's a prompt-level constraint.
 
 - Python 3.11–3.13
 - [Poetry](https://python-poetry.org/)
+- Node.js 18+ and npm — only needed to run the web UI (`frontend/`); the
+  backend, CLI, and tests don't need Node at all
 - AWS credentials with Bedrock access in `us-west-2` (or wherever
   `ORNATUS_BEDROCK_REGION` points) — only needed for the real Bedrock/Nova
-  provider. Everything else (tests, the CLI with
+  provider. Everything else (tests, the CLI/API/UI with
   `ORNATUS_MODEL_PROVIDER=local`) runs without AWS.
 
 ## Setup
@@ -279,6 +281,13 @@ curl -X POST http://127.0.0.1:8000/chat \
     "id": "rec-4f04fb867b02",
     "item_ids": ["item-shirt-oxford-white", "item-trousers-charcoal", "item-loafers-brown", "item-blazer-navy"],
     "excluded_item_ids": [],
+    "items": [
+      {"id": "item-shirt-oxford-white", "name": "White Oxford Shirt", "category": "top", "colors": ["white"], "material": "cotton", "formality": "business_casual", "style_tags": ["classic"]},
+      {"id": "item-trousers-charcoal", "name": "Charcoal Trousers", "category": "bottom", "colors": ["charcoal"], "material": "wool blend", "formality": "business_casual", "style_tags": ["tailored"]},
+      {"id": "item-loafers-brown", "name": "Brown Loafers", "category": "shoes", "colors": ["brown"], "material": "leather", "formality": "business_casual", "style_tags": ["classic"]},
+      {"id": "item-blazer-navy", "name": "Navy Blazer", "category": "outerwear", "colors": ["navy"], "material": "wool", "formality": "business_casual", "style_tags": ["classic", "tailored"]}
+    ],
+    "excluded_items": [],
     "reasoning": "Picked White Oxford Shirt, Charcoal Trousers, Brown Loafers, Navy Blazer for client dinner: it calls for business casual attire, and the forecast (clear, 52.0-68.0F) suggests layering with the outerwear.",
     "confidence": 0.75,
     "event_reference": "Client Dinner",
@@ -286,6 +295,8 @@ curl -X POST http://127.0.0.1:8000/chat \
   }
 }
 ```
+
+`items`/`excluded_items` are display-safe wardrobe details (name, category, colors, material, ...) resolved server-side from `item_ids`/`excluded_item_ids` — added so a UI can render a recommendation without a second lookup or showing raw ids. `item_ids`/`excluded_item_ids` stay for anything that only needs the ids.
 
 Feedback works the same way as a second request — `recommendation` is
 `null` for a feedback-type decision (there's nothing new to recommend yet):
@@ -348,6 +359,76 @@ wear runs the full [outfit recommendation workflow](#the-outfit-recommendation-w
 other requests fall back to the agent's general tool set (wardrobe
 lookup/search, marking an item worn).
 
+### `GET /wardrobe`
+
+The one read endpoint added alongside the UI, for the wardrobe screen —
+returns the demo user's persisted wardrobe as display-safe items (no
+purchase history, care instructions, or other internal detail):
+
+```bash
+curl http://127.0.0.1:8000/wardrobe
+```
+
+```json
+[
+  {"id": "item-blazer-navy", "name": "Navy Blazer", "category": "outerwear", "subcategory": "blazer", "colors": ["navy"], "material": "wool", "pattern": null, "formality": "business_casual", "style_tags": ["classic", "tailored"]},
+  {"id": "item-chinos-beige", "name": "Beige Chinos", "category": "bottom", "subcategory": "chinos", "colors": ["beige"], "material": "cotton twill", "pattern": null, "formality": "smart_casual", "style_tags": ["smart-casual"]}
+]
+```
+
+## Web UI
+
+A React/TypeScript/Vite frontend (`frontend/`) talks to the API above over
+plain HTTP — nothing about it is faked or hardcoded; every screen renders
+whatever the running backend actually returns, so it works unchanged
+whether `ORNATUS_MODEL_PROVIDER` is `local` or (once available) `bedrock`.
+
+Three screens, matching the product's actual shape rather than a generic
+admin layout:
+
+- **Home** — a large conversational input ("What should I wear...?") that
+  calls `POST /chat` and renders the reply. An outfit recommendation
+  renders as an editorial outfit card (garment names, a short reasoning
+  line, nothing exposing tool names or item ids); feedback ("I don't want
+  the blazer") goes through the same input and the same endpoint.
+- **Create** — the clothing-creation entry point ("Tell me what you're
+  imagining."), also `POST /chat`. A design concept renders as a title,
+  description, a details list (fit/material/color/occasion/...), and a
+  placeholder panel reserved for a future generated design image — no
+  image generation exists yet.
+- **Wardrobe** — the persisted wardrobe from `GET /wardrobe`, as an
+  editorial grid with lightweight category filters (All/Shirts/Trousers/
+  Outerwear/Shoes). Placeholder swatches stand in for garment photography.
+
+The visual system (`frontend/src/styles/tokens.css`) is a small set of CSS
+custom properties — warm neutral background, dark editorial type, a serif
+(Fraunces) for headings and a sans-serif (Inter) for UI text, restrained
+borders instead of shadows — so the palette/spacing/radius stay centralized
+rather than scattered across components.
+
+### Running the UI locally
+
+Backend (unchanged):
+
+```bash
+ORNATUS_MODEL_PROVIDER=local poetry run uvicorn ornatus.api.app:app --reload
+```
+
+Frontend, in a second terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Then open the URL Vite prints (typically `http://localhost:5173`). The
+frontend calls `http://localhost:8000` by default; override with a
+`VITE_API_BASE_URL` env var (e.g. in `frontend/.env.local`) if the API runs
+elsewhere. The API's CORS policy is intentionally permissive for local
+development only (see `ornatus/api/app.py`) — there is no auth or
+multi-user concept in Phase 1.
+
 ## Testing
 
 ```bash
@@ -361,8 +442,15 @@ design demo path end-to-end), the design domain
 (`tests/test_design_models.py`, `test_design_repository.py`,
 `test_design_service.py`, `test_design_tools.py`), and the HTTP API
 (`tests/test_api.py`, using FastAPI's `TestClient` against
-`ORNATUS_MODEL_PROVIDER=local`). `test_agent_smoke.py` makes real Bedrock
-calls and is skipped automatically when no AWS credentials are available.
+`ORNATUS_MODEL_PROVIDER=local`, including `GET /wardrobe` and the enriched
+`items`/`excluded_items` on a recommendation). `test_agent_smoke.py` makes
+real Bedrock calls and is skipped automatically when no AWS credentials
+are available.
+
+The frontend (`frontend/`) has no test suite yet — verified instead via
+`npm run build` (TypeScript project build) and `npm run lint`, both clean,
+plus a manual pass against a running local-model backend covering every
+screen (see [Web UI](#web-ui)).
 
 ## Status & what's next
 
@@ -388,11 +476,25 @@ Built in Phase 1:
   deterministic `DesignService`, agent tools, system-prompt guidance, a
   local-model demo path, and `POST /chat` support; see
   [Clothing creation vs. outfit recommendation](#clothing-creation-vs-outfit-recommendation)
+- A React/TypeScript/Vite web UI (`frontend/`) — Home (conversational
+  outfit request + feedback), Create (clothing-creation request), and
+  Wardrobe (persisted items, filterable) — calling the real API with no
+  hardcoded responses; see [Web UI](#web-ui)
+- `GET /wardrobe`, added to support the wardrobe screen
 - Tests for all of the above, none requiring AWS
 
 Deferred (deliberately, to stay in scope for this milestone):
-- Frontend/UI, auth, sessions, multi-user support, WebSockets/streaming for
-  the API — the API is a request/response JSON endpoint only, for now
+- Auth, sessions, multi-user support, WebSockets/streaming — the API is
+  still a plain request/response JSON endpoint, and the UI reflects that
+  (one demo user, no login, no persisted conversation across page reloads)
+- Real Nova/Bedrock model behind the UI — tonight's UI was verified against
+  `ORNATUS_MODEL_PROVIDER=local` only; it should work unchanged against
+  Bedrock once available, but that combination is itself untested until
+  then, same caveat as the CLI/API before it
+- Generated design imagery — the Create screen's image panel is a labeled
+  placeholder, ready for a future image but not wired to any generator
+- A frontend test suite — verified via TypeScript build + lint + manual
+  end-to-end passes against a running local-model backend, not automated
 - Everything past `DesignConcept` in the clothing-creation pipeline: visual
   generation, product/manufacturer/tailor discovery, quoting, human
   approval of a design (distinct from purchase approval), production, and

@@ -1,0 +1,68 @@
+.outfit-card {
+  background: var(--color-bg-raised);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-xl) var(--space-lg);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-lg);
+}
+
+.outfit-card__eyebrow {
+  font-size: 0.78rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-text-faint);
+}
+
+.outfit-card__pieces {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.outfit-card__piece-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.outfit-card__piece {
+  font-family: var(--font-serif);
+  font-size: 1.4rem;
+  color: var(--color-accent-strong);
+}
+
+.outfit-card__divider {
+  color: var(--color-text-faint);
+  font-size: 0.95rem;
+}
+
+.outfit-card__reasoning {
+  max-width: 480px;
+  color: var(--color-text-muted);
+  font-style: italic;
+  line-height: 1.6;
+}
+
+.outfit-card__footnote {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.82rem;
+  color: var(--color-text-faint);
+}
+
+@media (max-width: 560px) {
+  .outfit-card {
+    padding: var(--space-lg) var(--space-md);
+  }
+
+  .outfit-card__piece {
+    font-size: 1.15rem;
+  }
+}

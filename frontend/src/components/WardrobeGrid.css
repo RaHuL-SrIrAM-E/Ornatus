@@ -1,0 +1,48 @@
+.wardrobe-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.wardrobe-grid__filters {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+.wardrobe-grid__filter {
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-muted);
+  border-radius: 999px;
+  padding: 0.4rem 1rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition:
+    border-color 0.2s var(--ease),
+    color 0.2s var(--ease),
+    background 0.2s var(--ease);
+}
+
+.wardrobe-grid__filter:hover {
+  border-color: var(--color-border-strong);
+  color: var(--color-text);
+}
+
+.wardrobe-grid__filter--active {
+  background: var(--color-accent-strong);
+  border-color: var(--color-accent-strong);
+  color: var(--color-bg-raised);
+}
+
+.wardrobe-grid__items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--space-md);
+}
+
+.wardrobe-grid__empty {
+  color: var(--color-text-faint);
+  font-style: italic;
+  padding: var(--space-lg) 0;
+}

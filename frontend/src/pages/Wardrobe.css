@@ -1,0 +1,19 @@
+.wardrobe {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.wardrobe__hero {
+  padding: var(--space-lg) 0 var(--space-sm);
+}
+
+.wardrobe__hero h1 {
+  font-size: clamp(2rem, 4.5vw, 2.8rem);
+}
+
+.wardrobe__loading,
+.wardrobe__empty {
+  color: var(--color-text-faint);
+  font-style: italic;
+}

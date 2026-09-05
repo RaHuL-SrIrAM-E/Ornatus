@@ -1,0 +1,39 @@
+/* Ornatus design tokens — a small, restrained fashion-editorial palette.
+   Every color/spacing/type value components use comes from here, never
+   hardcoded inline, so the whole visual system stays adjustable in one
+   place. */
+
+:root {
+  /* Color — warm neutrals, no SaaS blue/purple, no gradients. */
+  --color-bg: #f6f2ec;
+  --color-bg-raised: #fbf9f5;
+  --color-bg-sunken: #efe8dd;
+  --color-text: #211c17;
+  --color-text-muted: #6f665c;
+  --color-text-faint: #a89e91;
+  --color-border: #ddd3c2;
+  --color-border-strong: #c7b9a3;
+  --color-accent: #71604a;
+  --color-accent-strong: #3d3327;
+  --color-negative: #8a4a3c;
+
+  /* Type */
+  --font-serif: "Fraunces", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+  /* Spacing scale */
+  --space-xs: 0.5rem;
+  --space-sm: 0.875rem;
+  --space-md: 1.5rem;
+  --space-lg: 2.5rem;
+  --space-xl: 4rem;
+  --space-2xl: 6rem;
+
+  /* Shape */
+  --radius-sm: 4px;
+  --radius-md: 10px;
+  --radius-lg: 18px;
+
+  /* Motion */
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+}

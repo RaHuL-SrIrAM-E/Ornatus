@@ -46,6 +46,35 @@ def test_chat_outfit_recommendation(api_client):
     assert body["recommendation"] is not None
     assert body["recommendation"]["item_ids"]
     assert "item-blazer-navy" in body["recommendation"]["item_ids"]
+    # Enriched, display-safe item details for the UI — not just bare ids.
+    names = {item["name"] for item in body["recommendation"]["items"]}
+    assert "Navy Blazer" in names
+    for item in body["recommendation"]["items"]:
+        assert set(item.keys()) == {
+            "id",
+            "name",
+            "category",
+            "subcategory",
+            "colors",
+            "material",
+            "pattern",
+            "formality",
+            "style_tags",
+        }
+
+
+def test_get_wardrobe_returns_seeded_items(api_client):
+    response = api_client.get("/wardrobe")
+
+    assert response.status_code == 200
+    items = response.json()
+    assert len(items) > 0
+    names = {item["name"] for item in items}
+    assert "Navy Blazer" in names
+    for item in items:
+        assert "id" in item
+        assert "name" in item
+        assert "category" in item
 
 
 def test_chat_rejects_empty_message(api_client):
